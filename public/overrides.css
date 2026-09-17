@@ -1,2 +1,14 @@
 .growth-up{color:var(--green)}
 .growth-down{color:var(--red)}
+
+/* 차트 커서 툴팁 */
+.chart-wrap canvas{cursor:crosshair;touch-action:pan-y}
+.chart-cursor{position:absolute;top:18px;bottom:43px;width:1px;background:rgba(150,172,204,.45);pointer-events:none}
+.chart-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;border:2px solid #0a0e15;pointer-events:none}
+.chart-tip{position:absolute;z-index:3;min-width:180px;max-width:300px;padding:8px 10px;background:rgba(8,12,19,.96);border:1px solid #2a3a52;border-radius:6px;box-shadow:0 8px 20px rgba(0,0,0,.45);color:#dbe4f0;font-size:11px;line-height:1.55;pointer-events:none}
+.chart-tip .tt-time{margin-bottom:4px;color:#8fa0b8;font-size:10px}
+.chart-tip .tt-row{display:flex;align-items:center;gap:6px}
+.chart-tip .tt-row i{flex:none;width:8px;height:8px;border-radius:2px}
+.chart-tip .tt-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chart-tip .tt-row b{color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chart-tip .tt-sub{margin:0 0 3px 14px;color:#7d8ca3;font-size:10px}
