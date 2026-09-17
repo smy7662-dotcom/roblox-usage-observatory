@@ -1,0 +1,7 @@
+public/data/
+dist/
+archive/
+_site/
+site-data/
+*.tmp
+__pycache__/
