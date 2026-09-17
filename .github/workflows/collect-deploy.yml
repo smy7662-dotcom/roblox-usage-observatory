@@ -1,0 +1,109 @@
+# 로블록스 사용량 관측소 — 자동 수집·배포
+#
+# 왜 GitHub Actions 인가: 이전 자동화는 Codex 에이전트가 매시간 직접 도는 방식이라
+# Codex 사용량 한도에 걸리면(2026-09-17 실제 발생) 수집·배포가 통째로 멈췄다.
+# 여기서는 LLM 없이 scripts/collect.py 만 돈다.
+#
+# ⚠️ 데이터는 main 이 아니라 `data` 브랜치에 쌓는다(매시간 커밋이 코드 기록을 묻지 않게).
+#    사이트는 main(화면 코드) + data(public/data)를 합쳐 GitHub Pages 로 배포한다.
+# ⚠️ 수집 주기는 collect.py 가 "이번 블록에 이미 성공했나"로 판단한다.
+#    예약이 밀리거나 두 번 돌아도 중복·누락이 생기지 않는다.
+
+name: 수집·배포
+
+on:
+  schedule:
+    # 정각은 러너가 몰려 밀리므로 17분에 둔다.
+    - cron: "17 * * * *"
+    # 백스톱: 앞 회차가 밀리거나 실패했을 때만 일한다. 이미 처리한 시간대면 커밋 없이 끝난다.
+    - cron: "47 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_tier:
+        description: "강제 수집 등급(top100 / top1000 / all). 비우면 예약 규칙대로"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: roblox-data-write
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      deploy: ${{ steps.commit.outputs.deploy }}
+      errors: ${{ steps.commit.outputs.errors }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: site-data
+
+      # 코드 변경(push)일 때는 수집 없이 화면만 다시 배포한다.
+      - name: 수집
+        if: github.event_name != 'push'
+        run: python3 scripts/collect.py --data-root site-data ${{ inputs.force_tier && format('--force-tier {0}', inputs.force_tier) || '' }}
+
+      - name: 데이터 커밋
+        id: commit
+        working-directory: site-data
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "변경 없음 — 커밋·배포 생략"; echo "deploy=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "관측 $(TZ=Asia/Seoul date +'%m-%d %H:%M')"
+          git pull --rebase --quiet origin data
+          git push origin HEAD:data
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+          echo "errors=$(python3 -c "import json;print(len(json.load(open('public/data/collection_status.json'))['errors']))")" >> "$GITHUB_OUTPUT"
+
+      - name: 사이트 묶기
+        if: steps.commit.outputs.deploy == 'true'
+        run: |
+          mkdir -p _site/public
+          cp index.html _site/
+          cp public/*.js public/*.css _site/public/
+          cp -r site-data/public/data _site/public/data
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.commit.outputs.deploy == 'true'
+        with:
+          path: _site
+
+  deploy:
+    needs: collect
+    if: needs.collect.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  # 수집이 일부 실패해도 받은 값은 배포하고, 실행은 실패로 표시해 알림 메일이 가게 한다.
+  report:
+    needs: [collect, deploy]
+    if: always() && needs.collect.outputs.errors != '' && needs.collect.outputs.errors != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::수집 오류 ${{ needs.collect.outputs.errors }}건 — data 브랜치 public/data/collection_status.json 의 errors 확인"
+          exit 1
