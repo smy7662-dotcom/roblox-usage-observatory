@@ -21,6 +21,11 @@ function Read-CsvOrFail([string]$Name) {
     return @(Import-Csv -LiteralPath $path)
 }
 
+function Read-OptionalCsv([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    return @(Import-Csv -LiteralPath $Path)
+}
+
 function NumberOrNull($value) {
     if ([string]::IsNullOrWhiteSpace([string]$value)) { return $null }
     return [double]::Parse([string]$value, [Globalization.CultureInfo]::InvariantCulture)
@@ -77,9 +82,30 @@ $games = Read-CsvOrFail 'bloxscout_daily_game_metrics.csv' | ForEach-Object {
         peak = NumberOrNull $_.peak_ccu
         visitsDelta = NumberOrNull $_.visits_delta
         favorites = NumberOrNull $_.favorites_count
+        source = 'bloxscout_daily'
         sourceUrl = $_.source_url
     }
 }
+
+$earlyShiftPath = Join-Path (Join-Path $SourceRoot 'early-shift') 'ccu_daily_by_game.csv'
+$earlyShiftGames = Read-OptionalCsv $earlyShiftPath | ForEach-Object {
+    $name = [string]$_.name
+    if ([string]::IsNullOrWhiteSpace($name)) { $name = "게임 $($_.universe_id)" }
+    [pscustomobject]@{
+        date = $_.date_utc
+        universeId = $_.universe_id
+        name = $name
+        genre = '미분류'
+        avg = NumberOrNull $_.avg_ccu
+        peak = NumberOrNull $_.peak_ccu
+        visitsDelta = $null
+        favorites = $null
+        source = 'early_shift_daily'
+        sourceUrl = 'local archive: early-shift'
+    }
+}
+
+$gameHistory = @($earlyShiftGames) + @($games)
 
 $meta = [pscustomobject]@{
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -89,6 +115,7 @@ $meta = [pscustomobject]@{
         platformDaily = DateRange $daily.date
         platformHourly = DateRange $hourly.timestamp
         gameDaily = DateRange $games.date
+        gameHistoryDaily = DateRange $gameHistory.date
     }
 }
 
@@ -96,6 +123,7 @@ $meta = [pscustomobject]@{
 @($hourly) | ConvertTo-Json -Depth 4 -Compress | Set-Content -LiteralPath (Join-Path $OutputRoot 'platform_hourly.json') -Encoding utf8
 @($reported) | ConvertTo-Json -Depth 4 -Compress | Set-Content -LiteralPath (Join-Path $OutputRoot 'reported_points.json') -Encoding utf8
 @($games) | ConvertTo-Json -Depth 4 -Compress | Set-Content -LiteralPath (Join-Path $OutputRoot 'games_daily.json') -Encoding utf8
+@($gameHistory) | ConvertTo-Json -Depth 4 -Compress | Set-Content -LiteralPath (Join-Path $OutputRoot 'game_history_daily.json') -Encoding utf8
 $meta | ConvertTo-Json -Depth 5 -Compress | Set-Content -LiteralPath (Join-Path $OutputRoot 'meta.json') -Encoding utf8
 
-Write-Host "Built $($daily.Count) daily rows, $($hourly.Count) hourly rows, $($games.Count) game rows."
+Write-Host "Built $($daily.Count) daily rows, $($hourly.Count) hourly rows, $($games.Count) current game rows, $($gameHistory.Count) historical game rows."

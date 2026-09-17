@@ -3,93 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Roblox platform and game usage dashboard using reported values and public observations without modeled DAU." />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2309090a'/%3E%3Cpath d='M14 42 24 22l9 13 8-8 9 15' fill='none' stroke='%233e8cff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <title>Roblox Usage Observatory</title>
+  <meta name="description" content="로블록스 공개 관측값 기반 사용량 분석 대시보드" />
+  <title>로블록스 사용량 관측소</title>
   <link rel="stylesheet" href="public/styles.css" />
+  <link rel="stylesheet" href="public/overrides.css" />
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="back-link" href="https://book-a676fcn2ku.tail6cf05a.ts.net/" target="_blank" rel="noreferrer">← 포털</a>
-      <div class="brand-lockup">
-        <div class="brand-icon">R</div>
-        <div><b>ROBLOX</b><span>USAGE LAB</span></div>
-      </div>
-
-      <div class="rail-section">
-        <div class="rail-label">데이터 모듈</div>
-        <button class="rail-card active" data-module="platform" type="button"><strong>◈ 플랫폼 CCU</strong><small>전체 동시접속 추이</small></button>
-        <button class="rail-card" data-module="games" type="button"><strong>▦ 게임별 사용량</strong><small>일별 관측 상위 게임</small></button>
-      </div>
-
-      <div class="rail-section">
-        <div class="rail-label">표시 레이어</div>
-        <button class="legend-item selected" data-series="observed" type="button"><i class="legend-swatch blue"></i><span><b>관측값</b><small>공개 원시 데이터</small></span></button>
-        <button class="legend-item" data-series="reported" type="button"><i class="legend-swatch purple"></i><span><b>보고값</b><small>실제 보고된 포인트</small></span></button>
-      </div>
-
-      <div class="rail-note"><span class="status-dot"></span><div><b>수집 정책</b><small>추정값·보간값 없음</small></div></div>
-      <div class="sidebar-foot">ROBLOX USAGE OBSERVATORY<br /><a href="https://github.com/IvanKuria/bloxscout-data" target="_blank" rel="noreferrer">source notes ↗</a></div>
+      <div class="brand-lockup"><div class="brand-mark">R</div><div><b>로블록스</b><span>사용량 관측소</span></div></div>
+      <div class="side-caption">분석 메뉴</div>
+      <nav class="side-nav" aria-label="분석 메뉴">
+        <button class="nav-item active" data-route="overview" type="button"><span>◈</span> 개요</button>
+        <button class="nav-item" data-route="games" type="button"><span>▦</span> 게임</button>
+        <button class="nav-item" data-route="compare" type="button"><span>⌁</span> 게임 비교</button>
+        <button class="nav-item" data-route="discovery" type="button"><span>✦</span> 발견 보드</button>
+        <button class="nav-item" data-route="creators" type="button"><span>◎</span> 제작자</button>
+        <button class="nav-item" data-route="genres" type="button"><span>◒</span> 장르</button>
+        <button class="nav-item" data-route="coverage" type="button"><span>◫</span> 데이터 범위</button>
+      </nav>
+      <div class="side-policy"><i></i><div><b>관측 정책</b><small>추정·보간·DAU 환산 제외</small></div></div>
+      <div class="side-foot">공개 원시 데이터 기반<br /><a href="https://github.com/IvanKuria/bloxscout-data" target="_blank" rel="noreferrer">출처 기록 보기 ↗</a></div>
     </aside>
 
     <main class="main-content">
-      <header class="page-head">
-        <div>
-          <div class="eyebrow">PLATFORM USAGE TRACKER</div>
-          <h1>Roblox 플랫폼 트래커</h1>
-          <p class="subtitle">공식 보고값과 공개 관측값을 분리해 보는 동시접속 이용량 기록</p>
-        </div>
-        <div class="headline-metrics">
-          <div class="live-metric"><span><i class="status-dot"></i> 최근 관측 CCU</span><strong id="latestCcu">—</strong></div>
-          <div><span>관측 기간</span><strong id="coverageText">—</strong></div>
-        </div>
+      <header class="topbar">
+        <div><div class="eyebrow">로블록스 사용량 관측소</div><h1 id="pageTitle">로블록스 사용량 개요</h1><p id="pageSubtitle">플랫폼과 게임의 공개 관측값을 한 화면에서 확인합니다.</p></div>
+        <div class="top-metrics"><div><span><i class="live-dot"></i> 최근 플랫폼 CCU</span><strong id="latestCcu">—</strong></div><div><span>게임 관측 수</span><strong id="trackedGames">—</strong></div></div>
       </header>
 
-      <section class="toolbar" aria-label="차트 필터">
-        <div class="toolbar-line">
-          <div class="filter-block"><span class="filter-label">기간</span><div class="segmented" id="periodControls" aria-label="기간">
-            <button data-period="1d">1D</button><button data-period="7d">7D</button><button data-period="30d">30D</button><button data-period="90d">90D</button><button data-period="1y">1Y</button><button data-period="2y">2Y</button><button data-period="5y">5Y</button><button data-period="all" class="active">전체</button>
-          </div></div>
-          <div class="filter-block"><span class="filter-label">주기</span><div class="segmented" id="frequencyControls" aria-label="집계 주기">
-            <button data-frequency="hourly" class="active">Hourly</button><button data-frequency="daily">Daily</button><button data-frequency="weekly">Weekly</button><button data-frequency="monthly">Monthly</button>
-          </div></div>
-          <div class="filter-block"><span class="filter-label">집계</span><div class="segmented" id="aggregationControls" aria-label="집계 방식">
-            <button data-aggregation="avg" class="active">Avg</button><button data-aggregation="peak">Peak</button>
-          </div></div>
-        </div>
-        <div class="toolbar-line secondary">
-          <label class="date-field"><span>시작</span><input id="startDate" type="date" /></label>
-          <label class="date-field"><span>종료</span><input id="endDate" type="date" /></label>
-          <button id="applyDates" class="outline-button">기간 적용</button>
-          <div class="toolbar-spacer"></div>
-          <button id="downloadCsv" class="outline-button">↓ CSV</button><button id="downloadJson" class="outline-button">↓ JSON</button><button id="fullscreen" class="outline-button">↗ 전체화면</button>
-        </div>
+      <section class="view" data-view="overview">
+        <section class="toolbar">
+          <div class="toolbar-row"><div class="filter-group"><span>기간</span><div class="segmented" id="periodControls"><button data-period="7d">7일</button><button data-period="30d">30일</button><button data-period="90d">90일</button><button data-period="1y">1년</button><button data-period="all" class="active">전체</button></div></div><div class="filter-group"><span>주기</span><div class="segmented" id="frequencyControls"><button data-frequency="hourly" class="active">시간별</button><button data-frequency="daily">일별</button><button data-frequency="weekly">주별</button><button data-frequency="monthly">월별</button></div></div><div class="filter-group"><span>값</span><div class="segmented" id="aggregationControls"><button data-aggregation="avg" class="active">평균</button><button data-aggregation="peak">피크</button></div></div></div>
+          <div class="toolbar-row toolbar-sub"><label>시작 <input id="startDate" type="date" /></label><label>종료 <input id="endDate" type="date" /></label><button id="applyDates" class="quiet-button">기간 적용</button><div class="grow"></div><button id="downloadCsv" class="quiet-button">↓ CSV</button><button id="downloadJson" class="quiet-button">↓ JSON</button><button id="fullscreen" class="quiet-button">↗ 크게 보기</button></div>
+        </section>
+        <div class="notice-row"><span><i class="dot blue"></i> 공개 관측값</span><span><i class="dot purple"></i> 별도 보고값</span><span><i class="dot amber"></i> 빈 구간은 보간하지 않음</span><span class="notice-right" id="dataStatus">불러오는 중…</span></div>
+        <section class="kpi-grid"><article class="kpi-card"><span>선택 구간 평균</span><strong id="summaryAvg">—</strong><small>관측 포인트 기준</small></article><article class="kpi-card"><span>선택 구간 피크</span><strong id="summaryPeak">—</strong><small>관측된 최대값</small></article><article class="kpi-card"><span>표시 포인트</span><strong id="summaryPoints">—</strong><small id="summaryPointsSub">누락 구간 제외</small></article><article class="kpi-card"><span>마지막 관측</span><strong id="summaryFreshness">—</strong><small id="summaryFreshnessSub">—</small></article></section>
+        <section class="panel chart-panel"><div class="panel-head"><div><div class="section-kicker">플랫폼 시계열</div><h2>플랫폼 전체 동시접속자</h2><p id="chartSubtitle">시간별 · 평균 · 전체 기간</p></div><span class="panel-status" id="chartStatus">—</span></div><div class="chart-wrap"><canvas id="usageChart" aria-label="플랫폼 동시접속자 시계열"></canvas><div id="emptyState" class="empty-state hidden">선택한 범위에 데이터가 없습니다.</div></div><div class="chart-foot"><span>축 라벨은 한국 시간 날짜로 표시합니다.</span><span class="mini-legend"><i class="line blue"></i>관측 CCU <i class="line purple"></i>보고값</span></div></section>
+        <div class="two-column"><section class="panel"><div class="panel-head"><div><div class="section-kicker">상위 게임</div><h2>현재 관측 CCU 상위</h2><p>가장 최근 날짜의 공개 일별 관측값</p></div><button class="text-button" data-route="games">전체 보기 →</button></div><div id="topGames" class="rank-list"></div></section><section class="panel"><div class="panel-head"><div><div class="section-kicker">장르 구성</div><h2>현재 관측 CCU의 장르별 비중</h2><p>게임별 최신 평균 CCU 합계 기준</p></div><button class="text-button" data-route="genres">분석 →</button></div><div id="genreBars" class="bar-list"></div></section></div>
       </section>
 
-      <div class="status-strip">
-        <span><i class="status-dot blue"></i> 원시 관측 포인트</span><span><i class="status-dot purple"></i> 보고된 포인트만 별도 표시</span><span><i class="status-dot amber"></i> 빈 구간은 보간하지 않음</span>
-      </div>
+      <section class="view hidden" data-view="games"><div class="view-head"><div><div class="section-kicker">게임 탐색</div><h2>게임별 사용량</h2><p>수집된 원시 일별 CCU를 게임 단위로 확인합니다. 행을 누르면 상세 시계열이 열립니다.</p></div><label class="search"><span>⌕</span><input id="gameSearch" placeholder="게임 이름 또는 유니버스 ID 검색" /></label></div><div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>게임</th><th>장르</th><th>평균 CCU</th><th>피크 CCU</th><th>최근 변화</th><th>관측일</th><th>데이터 범위</th></tr></thead><tbody id="gameTable"></tbody></table></div><div class="table-footer" id="gameTableFooter">—</div></div><section id="gameDetail" class="panel game-detail hidden"><div class="detail-head"><button id="closeGameDetail" class="quiet-button">← 목록으로</button><div><div class="section-kicker">게임 상세</div><h2 id="detailName">—</h2><p id="detailMeta">—</p></div><div class="detail-kpis"><span>최근 평균 <b id="detailLatest">—</b></span><span>최근 변화 <b id="detailGrowth">—</b></span><span>관측 피크 <b id="detailPeak">—</b></span><span>관측일 <b id="detailDays">—</b></span></div></div><div class="chart-wrap detail-chart"><canvas id="gameChart" aria-label="게임별 CCU 시계열"></canvas><div id="gameEmpty" class="empty-state hidden">이 게임의 연속 시계열이 없습니다.</div></div><div class="chart-foot"><span id="detailSourceNote">공개 일별 관측값</span><span>공백은 보간하지 않음</span></div></section></section>
 
-      <section class="kpi-grid">
-        <div class="kpi-card"><span>선택 구간 평균</span><strong id="summaryAvg">—</strong><small id="summaryAvgSub">관측 샘플 기준</small></div>
-        <div class="kpi-card"><span>선택 구간 피크</span><strong id="summaryPeak">—</strong><small id="summaryPeakSub">관측 피크 기준</small></div>
-        <div class="kpi-card"><span>표시 데이터 포인트</span><strong id="summaryPoints">—</strong><small id="summaryPointsSub">누락 구간 제외</small></div>
-        <div class="kpi-card"><span>수집 신선도</span><strong id="summaryFreshness">—</strong><small id="summaryFreshnessSub">마지막 관측 시각</small></div>
-      </section>
+      <section class="view hidden" data-view="compare"><div class="view-head"><div><div class="section-kicker">게임 비교</div><h2>게임별 CCU 시계열 비교</h2><p>최대 5개 게임을 선택해 같은 날짜 축에서 비교합니다.</p></div><button id="clearCompare" class="quiet-button">선택 초기화</button></div><div class="panel compare-picker"><div id="compareChips" class="compare-chips"></div><div class="compare-add"><select id="compareGameSelect"><option value="">게임을 선택하세요</option></select><button id="addCompare" class="primary-button">비교에 추가</button></div><p class="helper" id="compareHelper">게임을 추가하면 차트가 표시됩니다.</p></div><section class="panel"><div class="chart-wrap compare-chart"><canvas id="compareChart" aria-label="게임 비교 차트"></canvas><div id="compareEmpty" class="empty-state">비교할 게임을 선택하세요.</div></div></section></section>
 
-      <section class="panel chart-panel" id="chartCard">
-        <div class="panel-head"><div><div class="section-kicker">PLATFORM SERIES</div><h2 id="chartTitle">Roblox 플랫폼 CCU</h2><p id="chartSubtitle">Hourly · Average · 전체 기간</p></div><div class="chart-status" id="chartStatus">데이터 로딩 중…</div></div>
-        <div class="chart-wrap"><canvas id="usageChart" aria-label="Roblox 사용량 차트"></canvas><div id="emptyState" class="empty-state hidden">선택한 범위에 데이터가 없습니다.</div></div>
-        <div class="chart-foot"><span class="axis-note">X축: UTC 기준 · 라벨에 연도 포함</span><span class="mini-legend"><i class="legend-swatch blue"></i>관측 CCU <i class="legend-swatch purple"></i>보고값</span></div>
-      </section>
+      <section class="view hidden" data-view="discovery"><div class="view-head"><div><div class="section-kicker">발견 보드</div><h2>로블록스 발견 보드 변화</h2><p>트렌딩·인기·장르별 노출 순위의 진입, 이탈, 체류를 기록하는 모듈입니다.</p></div><span class="status-pill amber">수집 준비</span></div><section class="panel explanation"><h3>현재 상태</h3><p>현재 보유한 로컬 데이터에는 발견 보드의 시간별 스냅샷이 없습니다. 따라서 진입 수, 이탈 수, 중앙 체류시간을 임의로 만들어 표시하지 않습니다.</p><div class="feature-grid"><div><b>필요한 원시 데이터</b><span>보드명 · 관측 시각 · 게임 ID · 순위</span></div><div><b>계산할 수 있는 값</b><span>7일 진입/이탈 · 중앙 체류시간 · 보드별 회전율</span></div><div><b>수집 기준</b><span>최소 1시간 간격의 연속 스냅샷</span></div></div></section><section class="panel board-table"><div class="panel-head"><div><div class="section-kicker">보드 분석 미리보기</div><h2>자료가 쌓이면 이렇게 계산합니다</h2></div></div><table><thead><tr><th>보드</th><th>전형적 체류</th><th>7일 진입</th><th>7일 이탈</th><th>회전</th></tr></thead><tbody><tr><td>인기 게임</td><td class="muted">자료 수집 후 계산</td><td>—</td><td>—</td><td>—</td></tr><tr><td>신작·상승세</td><td class="muted">자료 수집 후 계산</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></section></section>
 
-      <section class="panel games-panel" id="gamesCard">
-        <div class="panel-head"><div><div class="section-kicker">GAME COVERAGE</div><h2>게임별 관측량</h2><p>현재 보유한 공개 일별 데이터 범위 안에서 비교함</p></div><label class="search"><span>⌕</span><input id="gameSearch" placeholder="게임 검색" /></label></div>
-        <div class="table-wrap"><table><thead><tr><th>게임</th><th>장르</th><th>평균 CCU</th><th>피크 CCU</th><th>관측일</th></tr></thead><tbody id="gameTable"></tbody></table></div>
-        <div class="table-footer" id="gameTableFooter">—</div>
-      </section>
-      <footer><span>Data policy: no modeled DAU · no gap interpolation</span><span>Public observation archive</span></footer>
+      <section class="view hidden" data-view="creators"><div class="view-head"><div><div class="section-kicker">제작자 분석</div><h2>제작자별 사용량</h2><p>공개 게임 API 스냅샷에 제작자 정보가 쌓이면 게임 사용량을 제작자 단위로 묶습니다.</p></div></div><section class="panel explanation" id="creatorPanel"></section></section>
+
+      <section class="view hidden" data-view="genres"><div class="view-head"><div><div class="section-kicker">장르 분석</div><h2>장르별 사용량</h2><p>최근 게임별 관측 CCU를 장르별로 합산한 현재 구성입니다.</p></div></div><section class="panel genre-panel"><div id="genreTable" class="genre-table"></div></section></section>
+
+      <section class="view hidden" data-view="coverage"><div class="view-head"><div><div class="section-kicker">데이터 범위</div><h2>수집 범위와 공백</h2><p>날짜와 원천별로 실제 확보된 값을 확인합니다.</p></div></div><div id="coverageCards" class="coverage-grid"></div><section class="panel explanation"><h3>해석 원칙</h3><p>표시되는 값은 공개 원시 관측값 또는 출처가 명시된 보고값입니다. 공식 전체 플랫폼 DAU로 환산하지 않으며, 누락된 날짜를 선형 보간하지 않습니다. 게임별 장기 시계열은 출처가 다른 구간을 구분해 보존합니다.</p><div class="coverage-notes"><span>✓ 실제 관측값만 표시</span><span>✓ 출처와 날짜 보존</span><span>✓ 공백을 데이터로 채우지 않음</span></div></section></section>
+
+      <footer><span>공개 관측값 기반 · 추정 DAU와 수익 추정 제외</span><span id="footerGenerated">—</span></footer>
     </main>
   </div>
   <script src="public/app.js"></script>
