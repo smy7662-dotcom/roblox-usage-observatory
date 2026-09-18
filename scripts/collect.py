@@ -470,13 +470,15 @@ def collect_games(root, repo_root, data_dir, status, tier, now):
     ranked = ranked_universe_ids(data_dir, history_rows)
     size = TIER_SIZE[tier]
     selected = ranked[:size] if size else ranked
-    # 워치리스트는 순위와 무관하게 항상 같이 관측한다(시간대 프로파일을 매시간 쌓기 위함).
-    watch = load_watchlist(repo_root, status)
-    selected = list(dict.fromkeys(list(selected) + watch))
     observed_at = now.replace(second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
-    log(f"게임: {tier} {len(selected)}개(워치리스트 {len(watch)}개 포함) 수집 시작 ({observed_at})")
-
+    # 탐색 보드(인기·트렌딩 등)에 지금 떠 있는 게임과 워치리스트는 순위와 무관하게 매시간 관측한다.
+    # 보드 게임 상당수가 CCU 101~1,000위라 top100 만으로는 4시간마다밖에 안 잡힌다
+    # (2026-09-18 확인: 폐기한 30분 수집기의 보드 게임 414개 중 97개만 top100).
     labels = fetch_sorts(root, data_dir, status, observed_at)
+    watch = load_watchlist(repo_root, status)
+    selected = list(dict.fromkeys(list(selected) + list(labels) + watch))
+    log(f"게임: {tier} {len(selected)}개(보드 {len(labels)}개·워치리스트 {len(watch)}개 포함) 수집 시작 ({observed_at})")
+
     fetched, failed = fetch_games(selected, observed_at, tier, status)
     if not fetched:
         raise RuntimeError(f"게임 API 응답 0행 ({tier}, 실패 배치 {failed})")
