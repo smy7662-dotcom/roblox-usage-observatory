@@ -408,9 +408,9 @@ def main():
 
     tiers = [] if args.no_games else due_tiers(status_prev, now, args.force_tier)
     last_platform = status_prev.get("lastPlatformSuccess")
-    platform_fresh = last_platform and now - parse_ts(last_platform) < timedelta(minutes=40)
+    platform_fresh = last_platform and now - parse_ts(last_platform) < timedelta(minutes=50)
     if not tiers and platform_fresh and not args.force_tier:
-        # 예약이 30분 간격 두 번이라, 앞 회차가 이미 처리한 시간대면 커밋·배포 없이 끝낸다.
+        # 예약이 10분마다 걸려 있으므로, 앞 회차가 이미 처리한 시간대면 커밋·배포 없이 끝낸다.
         log("이번 시간대 수집 이미 완료 — 변경 없음")
         return 0
 
