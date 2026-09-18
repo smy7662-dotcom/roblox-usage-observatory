@@ -56,6 +56,16 @@ jobs:
         if: github.event_name != 'push'
         run: python3 scripts/collect.py --data-root site-data ${{ inputs.force_tier && format('--force-tier {0}', inputs.force_tier) || '' }}
 
+      # 관측이 바뀐 회차에만 다시 계산한다(수집 없이 끝난 회차는 site-data 가 그대로라 건너뛴다).
+      - name: 시간대 프로파일 재계산
+        if: github.event_name != 'push'
+        run: |
+          if [ -n "$(git -C site-data status --porcelain)" ]; then
+            python3 scripts/build_diurnal.py site-data
+          else
+            echo "관측 변화 없음 — 시간대 프로파일 유지"
+          fi
+
       - name: 데이터 커밋
         id: commit
         working-directory: site-data

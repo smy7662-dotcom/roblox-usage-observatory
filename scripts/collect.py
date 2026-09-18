@@ -38,11 +38,16 @@ ARCHIVE_DAILY_URL = "https://robloxccu.com/data/ccu_daily.json"
 ARCHIVE_HOURLY_URL = "https://robloxccu.com/data/ccu_hourly.json"
 EDGE_URL = "https://robloxccu.com/data/live_edge.json"
 GAMES_API = "https://games.roblox.com/v1/games"
+SORTS_API = "https://apis.roblox.com/explore-api/v1/get-sorts?sessionId=observatory&device=all&country=all"
+AGE_API = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation"
 USER_AGENT = "roblox-usage-observatory/1.0 (+https://github.com/smy7662-dotcom/roblox-usage-observatory)"
 
 TIER_ORDER = ["top100", "top1000", "all"]
 TIER_SIZE = {"top100": 100, "top1000": 1000, "all": None}
 HISTORY_DAYS = 30
+# 게임 메타 배열 = [이름, 장르, 제작자, 연령등급, 최소연령]. 앞 3칸은 옛 화면 코드가 그대로 읽는다.
+META_LEN = 5
+AGE_LOOKUPS_PER_RUN = 20  # 등급 모르는 게임을 한 회차에 몇 개까지 조회할지
 
 TS_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$")
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -125,6 +130,14 @@ def http_json(url, attempts=6):
         log(f"  재시도 {attempt + 1}/{attempts - 1}: {last} → {wait}초 대기")
         time.sleep(wait)
     raise last
+
+
+def http_post_json(url, body):
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={
+        "User-Agent": USER_AGENT, "Accept": "application/json", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 # ── 1. 플랫폼 CCU ─────────────────────────────────────────────────────────────
@@ -210,7 +223,89 @@ def collect_platform(data_dir, status):
         f"edge {edge.get('updated_at')}")
 
 
+# ── 1.5 연령등급·인기 차트 ────────────────────────────────────────────────────
+# 등급(Minimal/Mild/Moderate/Restricted)은 게임 API 에 없고 탐색·가이드라인 API 에만 있다.
+# 비로그인 상태에서는 Restricted(18+) 게임이 차트에 아예 안 뜨므로, 차트 등급 분포는
+# "비로그인으로 보이는 범위"라는 한계를 그대로 안고 간다.
+
+BOARD_FIELDS = ["observed_at", "sort_id", "sort_name", "rank", "universe_id", "name", "playing",
+                "maturity", "min_age"]
+
+
+def fetch_sorts(root, data_dir, status, observed_at):
+    """탐색 차트 1회 호출 → 등급 라벨 + 보드 순위.
+
+    부산물로 보드별 순위를 archive/boards 에 쌓는다. '발견 보드' 화면이 요구하던
+    (보드명·관측시각·게임·순위) 원시 데이터가 이것이고, 진입·이탈·체류는 쌓인 뒤 계산한다.
+    """
+    try:
+        payload, _ = http_json(SORTS_API, attempts=3)
+    except Exception as err:  # noqa: BLE001
+        status["errors"].append(f"탐색 차트 수신 실패: {err}")
+        return {}
+    labels, top, board_rows = {}, [], []
+    for sort in payload.get("sorts", []):
+        for rank, g in enumerate(sort.get("games") or [], 1):
+            uid = str(g.get("universeId") or "")
+            if not uid.isdigit() or uid == "0":
+                continue
+            labels[uid] = (g.get("contentMaturity"), g.get("minimumAge"))
+            board_rows.append([observed_at, sort.get("sortId"), sort.get("sortDisplayName"), rank, uid,
+                               g.get("name"), num(g.get("playerCount")), g.get("contentMaturity"),
+                               g.get("minimumAge")])
+            if sort.get("sortId") == "top-playing-now":
+                top.append({"rank": rank, "universeId": uid, "name": g.get("name"),
+                            "playing": num(g.get("playerCount")), "maturity": g.get("contentMaturity"),
+                            "minAge": g.get("minimumAge")})
+    if board_rows:
+        append_csv_gz(os.path.join(root, "archive", "boards", observed_at[:7] + ".csv.gz"),
+                      BOARD_FIELDS, board_rows)
+    if top:
+        write_json(os.path.join(data_dir, "chart_top_playing.json"), {
+            "observedAt": iso_z(utc_now()), "sourceUrl": SORTS_API,
+            "policy": "비로그인 탐색 차트 순위 그대로. Restricted(18+) 경험은 비로그인에 노출되지 않아 빠진다.",
+            "games": top})
+    status["sorts"] = {"labeled": len(labels), "topPlayingNow": len(top)}
+    return labels
+
+
+def fetch_age_ratings(uids, status):
+    """등급을 모르는 게임만 가이드라인 API 로 개별 조회(회차당 상한)."""
+    out = {}
+    for uid in uids[:AGE_LOOKUPS_PER_RUN]:
+        try:
+            payload = http_post_json(AGE_API, {"universeId": str(uid)})
+        except Exception as err:  # noqa: BLE001
+            status["errors"].append(f"등급 조회 실패 {uid}: {err}")
+            continue
+        # 응답 형태(2026-09-18 실측): ageRecommendationDetails.summary.ageRecommendation
+        #   {"displayName":"Mild","contentMaturity":"mild","minimumAge":0}
+        rating = (payload.get("ageRecommendationDetails", {}).get("summary", {})
+                  .get("ageRecommendation", {}))
+        maturity = rating.get("contentMaturity")
+        if maturity:
+            out[str(uid)] = (maturity, rating.get("minimumAge"))
+        time.sleep(1.0)
+    return out
+
+
+def load_watchlist(repo_root, status):
+    """상위 차트 밖이라도 항상 관측할 게임 목록(코드 브랜치의 data/watchlist.json)."""
+    path = os.path.join(repo_root, "data", "watchlist.json")
+    payload = read_json(path, {})
+    ids = [str(g["universeId"]) for g in payload.get("games", []) if str(g.get("universeId", "")).isdigit()]
+    if ids:
+        status["watchlist"] = len(ids)
+    return ids
+
+
 # ── 2. 게임별 CCU ─────────────────────────────────────────────────────────────
+
+def pad_meta(meta):
+    """게임 메타를 [이름, 장르, 제작자, 등급, 최소연령] 길이로 맞춘다(옛 3칸 파일 호환)."""
+    meta = list(meta or [])
+    return (meta + [None] * META_LEN)[:META_LEN]
+
 
 def load_history(path):
     """live_game_history.json → (행 목록, 게임 메타). 예전 행 형식과 compact-v1 둘 다 읽는다."""
@@ -253,7 +348,7 @@ def save_history(path, rows, games, now):
         "columns": ["timeIndex", "universeId", "playing", "favorites", "tierIndex"],
         "tiers": TIER_ORDER,
         "times": times,
-        "games": {uid: games.get(uid, [None, None, None]) for uid in sorted(used, key=int)},
+        "games": {uid: pad_meta(games.get(uid)) for uid in sorted(used, key=int)},
         "rows": [[t_index[r["observedAt"]], r["universeId"], r["ccu"], r["favorites"], TIER_ORDER.index(r["tier"])]
                  for r in ordered],
     })
@@ -346,38 +441,56 @@ ARCHIVE_FIELDS = ["observed_at", "universe_id", "playing", "visits", "favorites"
                   "tier", "name", "genre", "genre_l1", "genre_l2", "creator_id", "creator_name", "creator_type"]
 
 
-def append_archive(root, rows, now):
-    """원시 관측 영구 보관: 월별 gzip CSV 에 gzip 멤버를 이어 붙인다(대시보드는 읽지 않음)."""
-    path = os.path.join(root, "archive", "live_games", now.strftime("%Y-%m") + ".csv.gz")
+def append_csv_gz(path, fields, rows):
+    """월별 gzip CSV 에 gzip 멤버를 이어 붙인다(대시보드는 읽지 않는 영구 보관용)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
     if not os.path.exists(path):
-        writer.writerow(ARCHIVE_FIELDS)
-    for r in rows:
-        writer.writerow([r["observedAt"], r["universeId"], r["ccu"], r["visits"], r["favorites"], r["maxPlayers"],
-                         r["updated"], r["tier"], r["name"], r["genre"], r["genre_l1"], r["genre_l2"],
-                         r["creatorId"], r["creatorName"], r["creatorType"]])
+        writer.writerow(fields)
+    for row in rows:
+        writer.writerow(row)
     with open(path, "ab") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz:
         gz.write(buf.getvalue().encode("utf-8"))
 
 
-def collect_games(root, data_dir, status, tier, now):
+def append_archive(root, rows, now):
+    """게임 관측 원시 보관."""
+    append_csv_gz(os.path.join(root, "archive", "live_games", now.strftime("%Y-%m") + ".csv.gz"),
+                  ARCHIVE_FIELDS,
+                  [[r["observedAt"], r["universeId"], r["ccu"], r["visits"], r["favorites"], r["maxPlayers"],
+                    r["updated"], r["tier"], r["name"], r["genre"], r["genre_l1"], r["genre_l2"],
+                    r["creatorId"], r["creatorName"], r["creatorType"]] for r in rows])
+
+
+def collect_games(root, repo_root, data_dir, status, tier, now):
     status["tiers"] = [tier]
     history_path = os.path.join(data_dir, "live_game_history.json")
     history_rows, games = load_history(history_path)
     ranked = ranked_universe_ids(data_dir, history_rows)
     size = TIER_SIZE[tier]
     selected = ranked[:size] if size else ranked
+    # 워치리스트는 순위와 무관하게 항상 같이 관측한다(시간대 프로파일을 매시간 쌓기 위함).
+    watch = load_watchlist(repo_root, status)
+    selected = list(dict.fromkeys(list(selected) + watch))
     observed_at = now.replace(second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
-    log(f"게임: {tier} {len(selected)}개 수집 시작 ({observed_at})")
+    log(f"게임: {tier} {len(selected)}개(워치리스트 {len(watch)}개 포함) 수집 시작 ({observed_at})")
 
+    labels = fetch_sorts(root, data_dir, status, observed_at)
     fetched, failed = fetch_games(selected, observed_at, tier, status)
     if not fetched:
         raise RuntimeError(f"게임 API 응답 0행 ({tier}, 실패 배치 {failed})")
     for r in fetched:
         history_rows.append({k: r[k] for k in ("observedAt", "universeId", "ccu", "favorites", "tier")})
-        games[r["universeId"]] = [r["name"], r["genre_l1"] or r["genre"], r["creatorName"]]
+        old = pad_meta(games.get(r["universeId"]))
+        mat, min_age = labels.get(r["universeId"], (old[3], old[4]))
+        games[r["universeId"]] = [r["name"], r["genre_l1"] or r["genre"], r["creatorName"], mat, min_age]
+    # 차트에 없어 등급을 모르는 게임은 관측된 순서대로 조금씩 채운다.
+    unknown = [uid for uid in (r["universeId"] for r in fetched) if not pad_meta(games.get(uid))[3]]
+    for uid, (mat, min_age) in fetch_age_ratings(unknown, status).items():
+        meta = pad_meta(games.get(uid))
+        games[uid] = meta[:3] + [mat, min_age]
+    status["ageLookups"] = {"unknown": len(unknown), "checked": min(len(unknown), AGE_LOOKUPS_PER_RUN)}
     kept = save_history(history_path, history_rows, games, now)
     append_archive(root, fetched, now)
 
@@ -398,6 +511,7 @@ def main():
     args = ap.parse_args()
 
     root = os.path.abspath(args.data_root)
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 코드 브랜치(워치리스트 위치)
     data_dir = os.path.join(root, "public", "data")
     status_path = os.path.join(data_dir, "collection_status.json")
     status_prev = read_json(status_path, {})
@@ -424,7 +538,7 @@ def main():
 
     if tiers:
         try:
-            saved = collect_games(root, data_dir, status, tiers[0], now) or saved
+            saved = collect_games(root, repo_root, data_dir, status, tiers[0], now) or saved
         except Exception as err:  # noqa: BLE001
             status["errors"].append(f"게임 수집 실패(기존 파일 유지): {err}")
             log(f"게임 수집 실패: {err}")

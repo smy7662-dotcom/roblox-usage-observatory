@@ -1,0 +1,355 @@
+{
+ "설명": "상위 차트 밖이지만 매시간 관측할 게임 목록. collect.py 가 모든 등급 수집에 항상 포함한다.",
+ "출처": "2026-09-16 성인향 후보 조사(Cowork/로블록스_성인유저/03_게임별타겟_게임표.csv)",
+ "주의": "Brookhaven·Violence District 등 일부는 비로그인 공개 API가 id 0 [TITLE UNAVAILABLE] 로 준다 → 수집기가 버리므로 값이 안 쌓일 수 있음",
+ "games": [
+  {
+   "universeId": 1686885941,
+   "name": "Brookhaven 🏡RP",
+   "why": "비로그인 차트 미표시 대형작",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 6739698191,
+   "name": "[CURE] Violence District",
+   "why": "비로그인 차트 미표시 대형작",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 1008451066,
+   "name": "Da Hood",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 2626227051,
+   "name": "MIC UP 🔊",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 2132866904,
+   "name": "FRONTLINES",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 1054526971,
+   "name": "Blackhawk Rescue Mission 5",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 113491250,
+   "name": "Phantom Forces",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 111958650,
+   "name": "Arsenal",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 47545,
+   "name": "🍕Work at a Pizza Place",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 1359573625,
+   "name": "Deepwoken",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 903807016,
+   "name": "Emergency Response: Liberty County",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 4367208330,
+   "name": "Pressure",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 1494262959,
+   "name": "Criminality",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 2862098693,
+   "name": "Project Delta",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 1168263273,
+   "name": "[UPDATE!] Bad Business | FPS ",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 3317679266,
+   "name": "PLS DONATE 💸",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 2294168059,
+   "name": "The Mimic",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 1769712451,
+   "name": "Southwest Florida Beta",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 371263894,
+   "name": "Greenville RP",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 245662005,
+   "name": "Jailbreak",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 5972059550,
+   "name": "[🌟 RETURN] Gym League ",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 4620241901,
+   "name": "[NEW 🗺️] Trident Survival",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 3747388906,
+   "name": "[🚁HELI] Fallen Survival🏹",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 6845400164,
+   "name": "Rate My Avatar 2 🔊",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 65241,
+   "name": "Natural Disaster Survival",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 88070565,
+   "name": "[🍽] Welcome to Bloxburg ",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 324740177,
+   "name": "Entry Point",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 16680835,
+   "name": "Notoriety: A PAYDAY® Experience",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 358276974,
+   "name": "Apocalypse Rising 2",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 8307114974,
+   "name": "[SEASON 3] Operation One",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 115797356,
+   "name": "Counter Blox",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 7633926880,
+   "name": "[UPDATE!] BloxStrike",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 4871329703,
+   "name": "TYPE://SOUL",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 533435040,
+   "name": "Flicker 💡",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 7750955984,
+   "name": "[🧣SCARF!] Hunty Zombie",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 6325068386,
+   "name": "[NIKO 👁️] Blue Lock: Rivals",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 1516533665,
+   "name": "Piggy",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 1526814825,
+   "name": "[THERMAL] War Tycoon",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 187796008,
+   "name": "Those Who Remain",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 2239430935,
+   "name": "Blair",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 1742264997,
+   "name": "SCP: Roleplay",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 3734304510,
+   "name": "South Bronx: The Trenches❗",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 10737656087,
+   "name": "THA BRONX 3",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 6726637224,
+   "name": "Street Life Remastered 🔥",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 5367389312,
+   "name": "[🎵CUSTOM SERVERS] Sing It! Karaoke Battles [VC🎤]",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 4283416256,
+   "name": "[0.25.3] Deadline",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 4793836769,
+   "name": " [🙌HANDS]🚗Midnight Chasers: Highway Racing",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 2092410051,
+   "name": "Retail Tycoon 2",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 31970568,
+   "name": "Theme Park Tycoon 2",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 2471084,
+   "name": "🌳 Lumber Tycoon 2",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 1180269832,
+   "name": "Arcane Odyssey 🌊",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 1087859240,
+   "name": "[☀️] Rogue Lineage",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 10096155511,
+   "name": "Strike: Warfare",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 10446291786,
+   "name": "Chat [💬🔊] rp ragdoll",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 2992873140,
+   "name": "Emergency Hamburg",
+   "why": "성인향 후보",
+   "maturity_20260916": "Mild"
+  },
+  {
+   "universeId": 7094518649,
+   "name": "Restaurant Tycoon 3",
+   "why": "성인향 후보",
+   "maturity_20260916": "Minimal"
+  },
+  {
+   "universeId": 4849157113,
+   "name": "[SEASON 5] Operations: Siege",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  },
+  {
+   "universeId": 7018190066,
+   "name": "Dead Rails",
+   "why": "성인향 후보",
+   "maturity_20260916": "Moderate"
+  }
+ ]
+}

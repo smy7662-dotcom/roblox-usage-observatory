@@ -5,3 +5,4 @@ _site/
 site-data/
 *.tmp
 __pycache__/
+.claude/
