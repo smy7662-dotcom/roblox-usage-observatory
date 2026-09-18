@@ -4,7 +4,11 @@
 
 ## 운영 구조 (2026-09-17~)
 
-- 수집·배포: GitHub Actions `.github/workflows/collect-deploy.yml` — 매시 4·14·24·34·44·54분(이미 수집한 시간대면 요청 없이 종료)
+- 수집·배포: GitHub Actions `.github/workflows/collect-deploy.yml`
+- **주 동력 = 릴레이(2026-09-18~, PC 불필요)**: 각 수집 회차 끝의 `relay` 잡이 다음 정시+5분까지 기다렸다가
+  자기 자신을 `workflow_dispatch` 로 실행한다. GitHub 예약은 이 계정에서 몇 시간에 한 번만 걸려서
+  (09-17~18 실측: 이 저장소 18시간 9회, 교와 `*/30` 약 5시간 간격) 예약만으로는 매시간이 안 된다.
+- 예약: 매시 4·14·24·34·44·54분(이미 수집한 시간대면 요청 없이 종료) — 릴레이가 끊기면 다시 잇는 용도
 - 보조 트리거: GitHub 예약이 자주 유실돼서(2026-09-17 18시간에 8회, 09-18 70분간 0회) 사용자 PC 작업 스케줄러
   `RobloxObservatoryKick` 이 15분마다 `scripts/local/kick_if_due.py` 를 돌린다. collect.py 와 같은 규칙으로
   이번 시간대 수집이 빠졌고 정각에서 10분이 지났으면 `workflow_dispatch` 로 깨운다(로그 `logs/kick.log`).
