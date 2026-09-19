@@ -312,6 +312,11 @@ ROMONITOR_MAX_FETCH = 20
 # 플랫폼 동접이 30분 사이 4분의 1 아래로 떨어졌다가 되돌아오는 건 측정 오류로 본다(2026-09-19 검수: 0값 15칸,
 # 7,490명 같은 칸). 지운 칸은 excluded 에 원값·사유와 함께 남기고, 빈칸을 채우지 않는다.
 ROMONITOR_GLITCH_RATIO = 0.25
+# 직접 수집(2026-09-19 사용자 결정): 매 수집 회차에 RoMonitor 차트 API 1건으로 최근 2일치 30분 값을 받는다.
+# 비로그인으로 최근 약 20일까지 열림(Codex 세션 확인). 회차가 오래 비면 최대 14일까지 거슬러 받는다.
+# ⚠️ RoMonitor 약관은 스크립트 수집을 금지함 — 사용자가 알고 결정. 요청은 회차당 1건, 차단(403·챌린지)되면 우회하지 않는다.
+ROMONITOR_LIVE_URL = "https://romonitorstats.com/api/v1/charts/get?name=platform-ccus&timeslice=half-hourly&start={start}&ends={end}"
+ROMONITOR_LIVE_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
 
 
 def split_romonitor_glitches(points):
@@ -345,11 +350,24 @@ def fetch_raw(url, timeout=90):
     return gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
 
 
+
+def fetch_romonitor_live(points, now):
+    last = max(points) if points else None
+    start = now - timedelta(days=2)
+    if last:
+        start = min(start, parse_ts(last) - timedelta(hours=12))
+    start = max(start, now - timedelta(days=14))
+    url = ROMONITOR_LIVE_URL.format(start=start.strftime("%Y-%m-%dT%H:%M:%S.000Z"), end=now.strftime("%Y-%m-%dT%H:%M:%S.999Z"))
+    req = urllib.request.Request(url, headers={"User-Agent": ROMONITOR_LIVE_UA, "Accept": "application/json",
+                                               "Referer": "https://romonitorstats.com/"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        body = resp.read()
+    series = json.loads(body.decode("utf-8"))  # 차단 페이지(HTML)면 여기서 실패 → 우회하지 않고 기록만
+    return next(x for x in series if x.get("name") in ROMONITOR_SERIES)["data"]
+
 def collect_romonitor(data_dir, status, status_prev, now):
     last = status_prev.get("lastRomonitorCheck")
-    if last and now - parse_ts(last) < timedelta(hours=ROMONITOR_CHECK_HOURS):
-        status["lastRomonitorCheck"] = last
-        return False
+    check_wayback = not (last and now - parse_ts(last) < timedelta(hours=ROMONITOR_CHECK_HOURS))
     path = os.path.join(data_dir, "platform_romonitor.json")
     payload = read_json(path, {})
     points = {t: v for t, v in payload.get("points", [])}
@@ -357,7 +375,27 @@ def collect_romonitor(data_dir, status, status_prev, now):
         points[t] = v
     done = set(payload.get("captures", []))
     failed = dict(payload.get("failedCaptures", {}))
-    rows = json.loads(fetch_raw(ROMONITOR_CDX).decode("utf-8"))[1:]
+    # 직접 수집: 최신값(30분 단위). 웨이백과 같은 칸이면 새로 받은 값이 이긴다.
+    live_added = 0
+    status["lastRomonitorLiveSuccess"] = status_prev.get("lastRomonitorLiveSuccess")
+    try:
+        for k, v in fetch_romonitor_live(points, now).items():
+            if v is None:
+                continue
+            t = iso_z(parse_ts(k))
+            if t not in points:
+                live_added += 1
+            points[t] = num(v)
+        status["lastRomonitorLiveSuccess"] = iso_z(now)
+        status["romonitorLive"] = {"added": live_added}
+    except Exception as err:  # noqa: BLE001 — 차단·장애는 우회하지 않고 기록. 하루 넘게 막히면 오류로 올려 알림
+        status["romonitorLive"] = {"error": str(err)[:300]}
+        ok = status["lastRomonitorLiveSuccess"]
+        if not ok or now - parse_ts(ok) > timedelta(hours=24):
+            status["errors"].append(f"RoMonitor 직접 수집 24시간 넘게 실패(마지막 성공 {ok}): {err}")
+        log(f"RoMonitor 직접 수집 실패: {err}")
+
+    rows = json.loads(fetch_raw(ROMONITOR_CDX).decode("utf-8"))[1:] if check_wayback else []
     todo = [r for r in rows if r[2] == "200" and r[0] not in done and failed.get(r[0], 0) < 3]
     todo.sort(key=lambda r: r[0], reverse=True)  # 최신 사본부터
     added, conflicts = 0, 0
@@ -390,14 +428,14 @@ def collect_romonitor(data_dir, status, status_prev, now):
         "archive": "https://web.archive.org",
         "stepSeconds": 1800,
         "updatedAt": iso_z(now),
-        "policy": "웨이백에 보관된 RoMonitor 플랫폼 차트 응답의 원값. 0 이하·앞뒤 1시간 최저값의 25% 미만 칸은 측정 오류로 보고 excluded 로 뺌. 보간·보정 없음. 시각은 UTC.",
+        "policy": "RoMonitor 플랫폼 차트 원값: 매 회차 직접 수집(최근 2일) + 웨이백 보관 사본(2023-04~). 0 이하·앞뒤 1시간 최저값의 25% 미만 칸은 측정 오류로 보고 excluded 로 뺌. 보간·보정 없음. 시각은 UTC.",
         "captures": sorted(done),
         "failedCaptures": failed,
         "excluded": excluded,
         "points": [[t, v] for t, v in ordered],
     })
-    status["lastRomonitorCheck"] = iso_z(now)
-    status["romonitor"] = {"newCaptures": len(todo[:ROMONITOR_MAX_FETCH]) - sum(1 for r in todo[:ROMONITOR_MAX_FETCH] if r[0] in failed),
+    status["lastRomonitorCheck"] = iso_z(now) if check_wayback else last
+    status["romonitor"] = {"liveAdded": live_added, "newCaptures": len(todo[:ROMONITOR_MAX_FETCH]) - sum(1 for r in todo[:ROMONITOR_MAX_FETCH] if r[0] in failed),
                            "addedPoints": added, "conflicts": conflicts, "points": len(ordered), "excluded": len(excluded),
                            "lastPoint": ordered[-1][0] if ordered else None, "pendingCaptures": max(0, len(todo) - ROMONITOR_MAX_FETCH)}
     log(f"RoMonitor: 새 사본 {status['romonitor']['newCaptures']}건, 새 칸 {added}, 충돌 {conflicts}, 마지막 {status['romonitor']['lastPoint']}")
