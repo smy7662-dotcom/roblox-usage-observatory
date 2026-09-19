@@ -21,7 +21,8 @@
 
 | 대상 | 주기 | 원천 |
 |---|---|---|
-| 플랫폼 전체 CCU(일별·시간별) | 매시간 | robloxccu.com 아카이브 + `live_edge.json` 누적 병합 |
+| 플랫폼 CCU **RoMonitor(기준)** | 6시간마다 새 사본 확인 | 웨이백(web.archive.org)에 보관된 RoMonitor 플랫폼 차트 응답. RoMonitor 사이트엔 요청 안 함 |
+| 플랫폼 CCU RoTrends(일별·시간별) | 매시간 | robloxccu.com 아카이브 + `live_edge.json` 누적 병합 |
 | 게임 상위 100 | 매시간 | Roblox 공개 게임 API `playing` |
 | 게임 상위 1,000 | UTC 4시간 블록마다 | 〃 |
 | 추적 게임 전체(약 3,900개) | UTC 하루 1회 | 〃 |
@@ -34,7 +35,12 @@
 
 ## 데이터 정책
 
-- `platform_daily.json`, `platform_hourly.json`: 공개 CCU 관측값(제3자 집계, Roblox 공식 합계 아님)
+- `platform_romonitor.json`: **플랫폼 수준·전년 비교의 기준(2026-09-19~)**. RoMonitor 30분 값, 2023-04-16~.
+  - 웨이백 사본 1건 = 14일치. 0 이하·앞뒤 1시간 최저값의 25% 미만 칸은 측정 오류로 `excluded` 에 따로 둠(보간 없음)
+  - 화면의 RoMonitor 일별값은 30분 칸이 44개 이상 찬 날만 씀
+  - ⚠️ RoMonitor 약관은 스크립트로 사이트 데이터를 긁거나 복사하는 걸 금지함. 사용자가 공개 게시를 결정함(2026-09-19)
+- `platform_daily.json`, `platform_hourly.json`: RoTrends(robloxccu) 관측값(제3자 집계, Roblox 공식 합계 아님)
+  - ⚠️ 2025-09부터 RoMonitor·공식 이용시간 대비 높게 나옴(같은 날 RoTrends÷RoMonitor 2025-08 1.02 → 2026-09 1.53). 수준·전년 비교에 쓰지 말 것
 - `reported_points.json`: 명시적 estimate/approximate 항목을 제외한 과거 보고 포인트
 - `game_history_daily.json`: 초기 일별 아카이브(Early Shift·BloxScout)
 - `live_game_history.json`: 공개 게임 API 실측, 최근 30일, `compact-v1` 형식

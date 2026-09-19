@@ -12,3 +12,5 @@
 .chart-tip .tt-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chart-tip .tt-row b{color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}
 .chart-tip .tt-sub{margin:0 0 3px 14px;color:#7d8ca3;font-size:10px}
+.dot.orange{background:#f08a4b}
+.line.orange{background:#f08a4b}

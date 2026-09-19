@@ -299,6 +299,111 @@ def load_watchlist(repo_root, status):
     return ids
 
 
+# ── 1-2. RoMonitor 플랫폼 CCU (웨이백 사본) ──────────────────────────────────
+# 2026-09-19 부터 플랫폼 수준·전년 비교의 기준. RoTrends(robloxccu)는 2025-09 이후 공식 이용시간 대비 과대.
+# RoMonitor 사이트에는 요청하지 않는다. 웨이백이 보관한 차트 응답(사본 1건 = 14일치 30분 값)만 받는다.
+ROMONITOR_CDX = ("https://web.archive.org/cdx/search/cdx?url=romonitorstats.com/api/v1/charts/get"
+                 "&matchType=prefix&output=json&fl=timestamp,original,statuscode"
+                 "&filter=original:.*platform-ccus.*&limit=5000")
+ROMONITOR_SERIES = ("Roblox Global CCUs", "Global Playing")  # 2023년 사본은 이름이 Global Playing
+ROMONITOR_CHECK_HOURS = 6
+ROMONITOR_MAX_FETCH = 20
+# 측정 오류로 보는 값: 0 이하, 또는 앞뒤 1시간 안의 정상값 중 가장 작은 값의 25% 미만으로 뚝 떨어진 칸.
+# 플랫폼 동접이 30분 사이 4분의 1 아래로 떨어졌다가 되돌아오는 건 측정 오류로 본다(2026-09-19 검수: 0값 15칸,
+# 7,490명 같은 칸). 지운 칸은 excluded 에 원값·사유와 함께 남기고, 빈칸을 채우지 않는다.
+ROMONITOR_GLITCH_RATIO = 0.25
+
+
+def split_romonitor_glitches(points):
+    # 오류값끼리 붙어 있으면(예: 0 옆의 7,490명) 서로를 기준으로 삼아 못 잡으므로,
+    # 이미 뺀 칸은 기준에서 제외하고 새로 빠지는 칸이 없을 때까지 반복한다.
+    reason = {t: "0 이하" for t, v in points.items() if v is None or v <= 0}
+    for _ in range(10):
+        found = False
+        for t, v in points.items():
+            if t in reason:
+                continue
+            ref = []
+            for k in (-2, -1, 1, 2):
+                n = iso_z(parse_ts(t) + timedelta(minutes=30 * k))
+                if n in points and n not in reason:
+                    ref.append(points[n])
+            if len(ref) >= 2 and v < ROMONITOR_GLITCH_RATIO * min(ref):
+                reason[t] = f"앞뒤 1시간 최저값의 {v / min(ref):.3f}배"
+                found = True
+        if not found:
+            break
+    clean = sorted((t, v) for t, v in points.items() if t not in reason)
+    excluded = sorted([t, points[t], r] for t, r in reason.items())
+    return clean, excluded
+
+
+def fetch_raw(url, timeout=90):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        b = resp.read()
+    return gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+
+
+def collect_romonitor(data_dir, status, status_prev, now):
+    last = status_prev.get("lastRomonitorCheck")
+    if last and now - parse_ts(last) < timedelta(hours=ROMONITOR_CHECK_HOURS):
+        status["lastRomonitorCheck"] = last
+        return False
+    path = os.path.join(data_dir, "platform_romonitor.json")
+    payload = read_json(path, {})
+    points = {t: v for t, v in payload.get("points", [])}
+    for t, v, _ in payload.get("excluded", []):  # 원값은 계속 보관했다가 매번 같은 규칙으로 다시 가른다
+        points[t] = v
+    done = set(payload.get("captures", []))
+    failed = dict(payload.get("failedCaptures", {}))
+    rows = json.loads(fetch_raw(ROMONITOR_CDX).decode("utf-8"))[1:]
+    todo = [r for r in rows if r[2] == "200" and r[0] not in done and failed.get(r[0], 0) < 3]
+    todo.sort(key=lambda r: r[0], reverse=True)  # 최신 사본부터
+    added, conflicts = 0, 0
+    for ts, orig, _ in todo[:ROMONITOR_MAX_FETCH]:
+        try:
+            series = json.loads(fetch_raw(f"https://web.archive.org/web/{ts}id_/{orig}").decode("utf-8"))
+            data = next(x for x in series if x.get("name") in ROMONITOR_SERIES)["data"]
+        except Exception as err:  # noqa: BLE001 — 웨이백 일시 오류는 다음 확인 때 재시도(최대 3회)
+            failed[ts] = failed.get(ts, 0) + 1
+            log(f"  RoMonitor 사본 {ts} 실패({failed[ts]}회): {err}")
+            time.sleep(4)
+            continue
+        for k, v in data.items():
+            if v is None:
+                continue
+            t = iso_z(parse_ts(k))
+            if t in points and points[t] != v:
+                conflicts += 1
+            if t not in points:
+                added += 1
+            points[t] = num(v)
+        done.add(ts)
+        failed.pop(ts, None)
+        time.sleep(2)
+    ordered, excluded = split_romonitor_glitches(points)
+    write_json(path, {
+        "format": "romonitor-v1",
+        "source": payload.get("source", "RoMonitor Stats · Roblox Global CCUs (Wayback Machine 사본)"),
+        "sourceUrl": payload.get("sourceUrl", "https://romonitorstats.com/api/v1/charts/get?name=platform-ccus&timeslice=half-hourly"),
+        "archive": "https://web.archive.org",
+        "stepSeconds": 1800,
+        "updatedAt": iso_z(now),
+        "policy": "웨이백에 보관된 RoMonitor 플랫폼 차트 응답의 원값. 0 이하·앞뒤 1시간 최저값의 25% 미만 칸은 측정 오류로 보고 excluded 로 뺌. 보간·보정 없음. 시각은 UTC.",
+        "captures": sorted(done),
+        "failedCaptures": failed,
+        "excluded": excluded,
+        "points": [[t, v] for t, v in ordered],
+    })
+    status["lastRomonitorCheck"] = iso_z(now)
+    status["romonitor"] = {"newCaptures": len(todo[:ROMONITOR_MAX_FETCH]) - sum(1 for r in todo[:ROMONITOR_MAX_FETCH] if r[0] in failed),
+                           "addedPoints": added, "conflicts": conflicts, "points": len(ordered), "excluded": len(excluded),
+                           "lastPoint": ordered[-1][0] if ordered else None, "pendingCaptures": max(0, len(todo) - ROMONITOR_MAX_FETCH)}
+    log(f"RoMonitor: 새 사본 {status['romonitor']['newCaptures']}건, 새 칸 {added}, 충돌 {conflicts}, 마지막 {status['romonitor']['lastPoint']}")
+    return True
+
+
 # ── 2. 게임별 CCU ─────────────────────────────────────────────────────────────
 
 def pad_meta(meta):
@@ -537,6 +642,13 @@ def main():
         except Exception as err:  # noqa: BLE001
             status["errors"].append(f"플랫폼 병합 실패(기존 파일 유지): {err}")
             log(f"플랫폼 병합 실패: {err}")
+
+    try:
+        saved = collect_romonitor(data_dir, status, status_prev, now) or saved
+    except Exception as err:  # noqa: BLE001 — 웨이백 장애는 다음 확인 때 다시 시도, 수집 실패로 치지 않음
+        status["lastRomonitorCheck"] = status_prev.get("lastRomonitorCheck")
+        status["romonitorError"] = str(err)
+        log(f"RoMonitor 웨이백 확인 실패: {err}")
 
     if tiers:
         try:
