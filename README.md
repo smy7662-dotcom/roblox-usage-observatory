@@ -12,7 +12,10 @@
 - 보조 트리거: GitHub 예약이 자주 유실돼서(2026-09-17 18시간에 8회, 09-18 70분간 0회) 사용자 PC 작업 스케줄러
   `RobloxObservatoryKick` 이 15분마다 `scripts/local/kick_if_due.py` 를 돌린다. collect.py 와 같은 규칙으로
   이번 시간대 수집이 빠졌고 정각에서 10분이 지났으면 `workflow_dispatch` 로 깨운다(로그 `logs/kick.log`).
-  PC 가 켜져 있을 때만 동작. 끄려면 `Unregister-ScheduledTask -TaskName RobloxObservatoryKick`
+  같은 작업이 `scripts/local/romonitor_local.py` 도 부른다 → RoMonitor 를 한 시간에 1건 직접 받아 data 브랜치에 push
+  (GitHub 러너는 Cloudflare 봇 확인 `cf-mitigated: challenge` 403 이라 PC 전용, 2026-09-19 확인).
+  "절전 해제하고 실행"(WakeToRun) 켜짐 → 절전 중에도 동작, 완전 종료 중엔 멈췄다가 켜질 때 최대 14일치 소급.
+  끄려면 `Unregister-ScheduledTask -TaskName RobloxObservatoryKick`
 - 코드: `main` 브랜치 / 데이터: `data` 브랜치(`public/data`, `archive/`)
 - 사이트: `main` 화면 코드 + `data` 브랜치 데이터를 합쳐 GitHub Pages 로 배포
 - LLM 없이 `scripts/collect.py`(파이썬 표준 라이브러리)만 돈다. 예전 Codex 에이전트 자동화는 사용량 한도에 걸리면 멈췄음.
