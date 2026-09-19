@@ -1,0 +1,25 @@
+# RoMonitor 차트 API 가 GitHub 러너에서 열리는지 1건만 확인하는 수동 점검용.
+# 2026-09-19 07:05Z 수집 회차에서 403 이 나서 만들었다. 우회 헤더·프록시는 쓰지 않는다.
+name: RoMonitor 접근 점검
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 요청 1건
+        run: |
+          S=$(date -u -d '1 day ago' +%Y-%m-%dT00:00:00.000Z); E=$(date -u +%Y-%m-%dT%H:%M:%S.999Z)
+          URL="https://romonitorstats.com/api/v1/charts/get?name=platform-ccus&timeslice=half-hourly&start=$S&ends=$E"
+          curl -s -m 30 -D headers.txt -o body.txt -w "HTTP %{http_code} bytes %{size_download}\n" \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36" \
+            -H "Accept: application/json" -H "Referer: https://romonitorstats.com/" "$URL"
+          echo "--- 응답 헤더 일부"; grep -iE "^(HTTP|server|cf-ray|cf-mitigated|content-type)" headers.txt || true
+          echo "--- 본문 앞부분"; head -c 300 body.txt; echo
+          echo "--- 러너 공인 IP 소속"; curl -s -m 10 https://ipinfo.io/org || true
