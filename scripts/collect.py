@@ -142,7 +142,7 @@ def http_post_json(url, body):
 
 # ── 1. 플랫폼 CCU ─────────────────────────────────────────────────────────────
 
-def collect_platform(data_dir, status):
+def collect_platform(data_dir, status, last_archive_fetch=None):
     daily_path = os.path.join(data_dir, "platform_daily.json")
     hourly_path = os.path.join(data_dir, "platform_hourly.json")
     old_daily = read_json(daily_path, [])
@@ -158,23 +158,27 @@ def collect_platform(data_dir, status):
         hourly[ts] = {**row, "timestamp": ts, "ccu": num(row.get("ccu")), "peak": num(row.get("peak"))}
 
     # 아카이브는 실패해도 치명적이지 않다(이미 기존 파일에 들어 있음).
-    try:
-        archive_daily, _ = http_json(ARCHIVE_DAILY_URL)
-        for row in archive_daily:
-            if not row.get("date"):
-                continue
-            d = norm_day(row["date"])
-            daily[d] = {"date": d, "avg": num(row.get("ccu_avg")), "peak": num(row.get("ccu_peak")),
-                        "source": "robloxccu_daily_archive", "sourceUrl": ARCHIVE_DAILY_URL}
-        archive_hourly, _ = http_json(ARCHIVE_HOURLY_URL)
-        for row in archive_hourly.get("measured", []):
-            if not row.get("t"):
-                continue
-            ts = iso_z(parse_ts(row["t"]))
-            hourly[ts] = {"timestamp": ts, "ccu": num(row.get("ccu")), "peak": num(row.get("peak")),
-                          "source": "robloxccu_hourly_archive", "sourceUrl": ARCHIVE_HOURLY_URL}
-    except Exception as err:  # noqa: BLE001 — 원인만 기록하고 edge 병합은 계속
-        status["errors"].append(f"플랫폼 아카이브 수신 실패(기존값 유지): {err}")
+    # 2026-07-01 에서 끝난 정적 파일(시간별 약 0.9MB)이라 매시간 받을 필요가 없다 → 하루 한 번만.
+    status["lastArchiveFetch"] = last_archive_fetch
+    if not (last_archive_fetch and utc_now() - parse_ts(last_archive_fetch) < timedelta(hours=24)):
+        status["lastArchiveFetch"] = iso_z(utc_now())
+        try:
+            archive_daily, _ = http_json(ARCHIVE_DAILY_URL)
+            for row in archive_daily:
+                if not row.get("date"):
+                    continue
+                d = norm_day(row["date"])
+                daily[d] = {"date": d, "avg": num(row.get("ccu_avg")), "peak": num(row.get("ccu_peak")),
+                            "source": "robloxccu_daily_archive", "sourceUrl": ARCHIVE_DAILY_URL}
+            archive_hourly, _ = http_json(ARCHIVE_HOURLY_URL)
+            for row in archive_hourly.get("measured", []):
+                if not row.get("t"):
+                    continue
+                ts = iso_z(parse_ts(row["t"]))
+                hourly[ts] = {"timestamp": ts, "ccu": num(row.get("ccu")), "peak": num(row.get("peak")),
+                              "source": "robloxccu_hourly_archive", "sourceUrl": ARCHIVE_HOURLY_URL}
+        except Exception as err:  # noqa: BLE001 — 원인만 기록하고 edge 병합은 계속
+            status["errors"].append(f"플랫폼 아카이브 수신 실패(기존값 유지): {err}")
 
     edge, _ = http_json(EDGE_URL)
     if not edge.get("daily") or not edge.get("hourly"):
@@ -307,12 +311,15 @@ ROMONITOR_CDX = ("https://web.archive.org/cdx/search/cdx?url=romonitorstats.com/
                  "&filter=original:.*platform-ccus.*&limit=5000")
 ROMONITOR_SERIES = ("Roblox Global CCUs", "Global Playing")  # 2023년 사본은 이름이 Global Playing
 ROMONITOR_CHECK_HOURS = 6
+ROMONITOR_STALE_HOURS = 26  # 최신 칸이 이보다 오래되면 하루 한 번(UTC 00시대) 오류로 올려 알림
 ROMONITOR_MAX_FETCH = 20
 # 측정 오류로 보는 값: 0 이하, 또는 앞뒤 1시간 안의 정상값 중 가장 작은 값의 25% 미만으로 뚝 떨어진 칸.
 # 플랫폼 동접이 30분 사이 4분의 1 아래로 떨어졌다가 되돌아오는 건 측정 오류로 본다(2026-09-19 검수: 0값 15칸,
 # 7,490명 같은 칸). 지운 칸은 excluded 에 원값·사유와 함께 남기고, 빈칸을 채우지 않는다.
 ROMONITOR_GLITCH_RATIO = 0.25
-# 직접 수집(2026-09-19 사용자 결정): 매 수집 회차에 RoMonitor 차트 API 1건으로 최근 2일치 30분 값을 받는다.
+# 직접 수집(2026-09-19 사용자 결정): RoMonitor 차트 API 1건으로 최근 2일치 30분 값을 받는다.
+# ⚠️ GitHub Actions 러너에서는 403(2026-09-19 07:05Z 실측) → 사용자 PC(scripts/local/romonitor_local.py)에서만 돈다.
+#    PC 가 꺼져 있던 동안은 다음 실행 때 최대 14일치를 거슬러 받아 빈칸을 메운다(API 가 최근 약 20일 보관).
 # 비로그인으로 최근 약 20일까지 열림(Codex 세션 확인). 회차가 오래 비면 최대 14일까지 거슬러 받는다.
 # ⚠️ RoMonitor 약관은 스크립트 수집을 금지함 — 사용자가 알고 결정. 요청은 회차당 1건, 차단(403·챌린지)되면 우회하지 않는다.
 ROMONITOR_LIVE_URL = "https://romonitorstats.com/api/v1/charts/get?name=platform-ccus&timeslice=half-hourly&start={start}&ends={end}"
@@ -365,9 +372,11 @@ def fetch_romonitor_live(points, now):
     series = json.loads(body.decode("utf-8"))  # 차단 페이지(HTML)면 여기서 실패 → 우회하지 않고 기록만
     return next(x for x in series if x.get("name") in ROMONITOR_SERIES)["data"]
 
-def collect_romonitor(data_dir, status, status_prev, now):
+def collect_romonitor(data_dir, status, status_prev, now, live=False, wayback=True):
+    """RoMonitor 플랫폼 CCU 를 합친다. live=직접 수집(PC 전용), wayback=웨이백 새 사본 확인(6시간마다).
+    바뀐 게 있을 때만 파일을 다시 쓴다(PC 와 Actions 가 같은 파일을 번갈아 쓰므로 불필요한 충돌 방지)."""
     last = status_prev.get("lastRomonitorCheck")
-    check_wayback = not (last and now - parse_ts(last) < timedelta(hours=ROMONITOR_CHECK_HOURS))
+    check_wayback = wayback and not (last and now - parse_ts(last) < timedelta(hours=ROMONITOR_CHECK_HOURS))
     path = os.path.join(data_dir, "platform_romonitor.json")
     payload = read_json(path, {})
     points = {t: v for t, v in payload.get("points", [])}
@@ -375,31 +384,30 @@ def collect_romonitor(data_dir, status, status_prev, now):
         points[t] = v
     done = set(payload.get("captures", []))
     failed = dict(payload.get("failedCaptures", {}))
-    # 직접 수집: 최신값(30분 단위). 웨이백과 같은 칸이면 새로 받은 값이 이긴다.
-    live_added = 0
-    status["lastRomonitorLiveSuccess"] = status_prev.get("lastRomonitorLiveSuccess")
-    try:
+    changed = False
+
+    live_added, live_changed = 0, 0
+    last_live = payload.get("lastLiveFetch")
+    if live:
+        # 새로 받은 값이 이긴다(최근 칸은 RoMonitor 가 나중에 고치기도 함)
         for k, v in fetch_romonitor_live(points, now).items():
             if v is None:
                 continue
             t = iso_z(parse_ts(k))
             if t not in points:
                 live_added += 1
+            elif points[t] != num(v):
+                live_changed += 1
             points[t] = num(v)
-        status["lastRomonitorLiveSuccess"] = iso_z(now)
-        status["romonitorLive"] = {"added": live_added}
-    except Exception as err:  # noqa: BLE001 — 차단·장애는 우회하지 않고 기록. 하루 넘게 막히면 오류로 올려 알림
-        status["romonitorLive"] = {"error": str(err)[:300]}
-        ok = status["lastRomonitorLiveSuccess"]
-        if not ok or now - parse_ts(ok) > timedelta(hours=24):
-            status["errors"].append(f"RoMonitor 직접 수집 24시간 넘게 실패(마지막 성공 {ok}): {err}")
-        log(f"RoMonitor 직접 수집 실패: {err}")
+        last_live = iso_z(now)
+        changed = True
 
     rows = json.loads(fetch_raw(ROMONITOR_CDX).decode("utf-8"))[1:] if check_wayback else []
     todo = [r for r in rows if r[2] == "200" and r[0] not in done and failed.get(r[0], 0) < 3]
     todo.sort(key=lambda r: r[0], reverse=True)  # 최신 사본부터
-    added, conflicts = 0, 0
+    added, conflicts, fetched = 0, 0, 0
     for ts, orig, _ in todo[:ROMONITOR_MAX_FETCH]:
+        changed = True
         try:
             series = json.loads(fetch_raw(f"https://web.archive.org/web/{ts}id_/{orig}").decode("utf-8"))
             data = next(x for x in series if x.get("name") in ROMONITOR_SERIES)["data"]
@@ -412,34 +420,45 @@ def collect_romonitor(data_dir, status, status_prev, now):
             if v is None:
                 continue
             t = iso_z(parse_ts(k))
-            if t in points and points[t] != v:
-                conflicts += 1
-            if t not in points:
-                added += 1
+            if t in points:
+                if points[t] != v:
+                    conflicts += 1
+                continue  # 이미 있는 칸(직접 수집값 포함)은 옛 사본으로 덮지 않는다
+            added += 1
             points[t] = num(v)
         done.add(ts)
         failed.pop(ts, None)
+        fetched += 1
         time.sleep(2)
+
     ordered, excluded = split_romonitor_glitches(points)
-    write_json(path, {
-        "format": "romonitor-v1",
-        "source": payload.get("source", "RoMonitor Stats · Roblox Global CCUs (Wayback Machine 사본)"),
-        "sourceUrl": payload.get("sourceUrl", "https://romonitorstats.com/api/v1/charts/get?name=platform-ccus&timeslice=half-hourly"),
-        "archive": "https://web.archive.org",
-        "stepSeconds": 1800,
-        "updatedAt": iso_z(now),
-        "policy": "RoMonitor 플랫폼 차트 원값: 매 회차 직접 수집(최근 2일) + 웨이백 보관 사본(2023-04~). 0 이하·앞뒤 1시간 최저값의 25% 미만 칸은 측정 오류로 보고 excluded 로 뺌. 보간·보정 없음. 시각은 UTC.",
-        "captures": sorted(done),
-        "failedCaptures": failed,
-        "excluded": excluded,
-        "points": [[t, v] for t, v in ordered],
-    })
-    status["lastRomonitorCheck"] = iso_z(now) if check_wayback else last
-    status["romonitor"] = {"liveAdded": live_added, "newCaptures": len(todo[:ROMONITOR_MAX_FETCH]) - sum(1 for r in todo[:ROMONITOR_MAX_FETCH] if r[0] in failed),
-                           "addedPoints": added, "conflicts": conflicts, "points": len(ordered), "excluded": len(excluded),
-                           "lastPoint": ordered[-1][0] if ordered else None, "pendingCaptures": max(0, len(todo) - ROMONITOR_MAX_FETCH)}
-    log(f"RoMonitor: 새 사본 {status['romonitor']['newCaptures']}건, 새 칸 {added}, 충돌 {conflicts}, 마지막 {status['romonitor']['lastPoint']}")
-    return True
+    if changed:
+        write_json(path, {
+            "format": "romonitor-v1",
+            "source": payload.get("source", "RoMonitor Stats · Roblox Global CCUs"),
+            "sourceUrl": payload.get("sourceUrl", "https://romonitorstats.com/api/v1/charts/get?name=platform-ccus&timeslice=half-hourly"),
+            "archive": "https://web.archive.org",
+            "stepSeconds": 1800,
+            "updatedAt": iso_z(now),
+            "lastLiveFetch": last_live,
+            "policy": "RoMonitor 플랫폼 차트 원값: 사용자 PC 가 매시간 직접 수집(최근 2일, 꺼져 있던 동안은 최대 14일 소급) + 웨이백 보관 사본(2023-04~). 0 이하·앞뒤 1시간 최저값의 25% 미만 칸은 측정 오류로 보고 excluded 로 뺌. 보간·보정 없음. 시각은 UTC.",
+            "captures": sorted(done),
+            "failedCaptures": failed,
+            "excluded": excluded,
+            "points": [[t, v] for t, v in ordered],
+        })
+    if wayback:
+        status["lastRomonitorCheck"] = iso_z(now) if check_wayback else last
+    last_point = ordered[-1][0] if ordered else None
+    status["romonitor"] = {"liveAdded": live_added, "liveChanged": live_changed, "lastLiveFetch": last_live,
+                           "newCaptures": fetched, "addedPoints": added, "conflicts": conflicts,
+                           "points": len(ordered), "excluded": len(excluded), "lastPoint": last_point,
+                           "pendingCaptures": max(0, len(todo) - ROMONITOR_MAX_FETCH)}
+    # 최신 칸이 너무 오래되면(PC 수집이 멈춤) 하루 한 번만 오류로 올린다 — 매시간 실패 메일 방지
+    if wayback and last_point and now - parse_ts(last_point) > timedelta(hours=ROMONITOR_STALE_HOURS) and now.hour == 0:
+        status["errors"].append(f"RoMonitor 최신 칸이 {last_point} 에서 멈춤 — PC 수집기(RobloxObservatoryKick) 확인 필요")
+    log(f"RoMonitor: 직접 +{live_added}(수정 {live_changed}), 새 사본 {fetched}건 +{added}, 충돌 {conflicts}, 마지막 {last_point}")
+    return changed
 
 
 # ── 2. 게임별 CCU ─────────────────────────────────────────────────────────────
@@ -653,6 +672,7 @@ def main():
     ap.add_argument("--force-tier", choices=TIER_ORDER)
     ap.add_argument("--no-games", action="store_true")
     ap.add_argument("--no-platform", action="store_true")
+    ap.add_argument("--romonitor-live", action="store_true", help="RoMonitor 직접 수집(PC 전용 — Actions 러너는 403)")
     args = ap.parse_args()
 
     root = os.path.abspath(args.data_root)
@@ -675,14 +695,14 @@ def main():
 
     if not args.no_platform:
         try:
-            collect_platform(data_dir, status)
+            collect_platform(data_dir, status, status_prev.get("lastArchiveFetch"))
             saved = True
         except Exception as err:  # noqa: BLE001
             status["errors"].append(f"플랫폼 병합 실패(기존 파일 유지): {err}")
             log(f"플랫폼 병합 실패: {err}")
 
     try:
-        saved = collect_romonitor(data_dir, status, status_prev, now) or saved
+        saved = collect_romonitor(data_dir, status, status_prev, now, live=args.romonitor_live) or saved
     except Exception as err:  # noqa: BLE001 — 웨이백 장애는 다음 확인 때 다시 시도, 수집 실패로 치지 않음
         status["lastRomonitorCheck"] = status_prev.get("lastRomonitorCheck")
         status["romonitorError"] = str(err)

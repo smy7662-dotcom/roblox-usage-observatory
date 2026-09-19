@@ -7,3 +7,4 @@ site-data/
 __pycache__/
 .claude/
 logs/
+.data-branch/
