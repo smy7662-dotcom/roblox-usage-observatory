@@ -140,6 +140,65 @@ def window(days, dates, k):
     return peak, avg
 
 
+SHARE_MIN_PCT = 6.0      # 이 점유율을 넘긴 적이 있어야 "히트"로 보고 선을 그린다
+SHARE_MIN_DAYS = 3       # 그 점유율을 넘긴 날이 이만큼은 있어야 함(하루짜리 사고 제외)
+SHARE_MIN_GAMES = 40     # 그날 관측된 게임이 이보다 적으면 사본이 반쪽이라 합계를 못 믿는다
+SHARE_MIN_SLOTS = 40     # 플랫폼 30분 칸(하루 48개)이 이보다 적은 날은 하루 평균을 못 믿는다
+
+
+def build_share_history(acc, plat, meta, out_dir):
+    """날짜별 '플랫폼 하루 평균 대비 게임 하루 평균' 점유율 — 언제 어떤 게임이 플랫폼을 끌었는지용.
+
+    피크끼리 나누지 않는 이유: 게임마다 피크 시각이 달라서 토요일 이벤트 날은 상위 10개 피크 합이
+    플랫폼 피크의 140%까지 나온다(2025-09-20 실측). 하루 평균끼리 나누면 같은 하루를 분모·분자가
+    같이 덮어서 합이 100%를 넘지 않는다(같은 구간 실측 최대 63.7%).
+    """
+    per_date = defaultdict(list)          # 날짜 → [게임 하루 평균]
+    share = {}                            # uid → 날짜 → 점유율%
+    for uid, days in acc.items():
+        s = {}
+        for d, v in days.items():
+            av, p = v["avg"], plat.get(d)
+            if not av or not p or p["n"] < SHARE_MIN_SLOTS:
+                continue
+            per_date[d].append(av)
+            s[d] = round(av / p["avg"] * 100, 2)
+        if sum(1 for v in s.values() if v >= SHARE_MIN_PCT) >= SHARE_MIN_DAYS:
+            share[uid] = s
+    dates = sorted(per_date)
+    if not dates:
+        return 0
+    top10, observed = [], []
+    for d in dates:
+        vals = sorted(per_date[d], reverse=True)
+        observed.append(len(vals))
+        top10.append(round(sum(vals[:10]) / plat[d]["avg"] * 100, 2)
+                     if len(vals) >= SHARE_MIN_GAMES else None)
+    picks = sorted(share, key=lambda u: -max(share[u].values()))[:12]
+    games = []
+    for uid in picks:
+        m = meta.get(uid) or {}
+        games.append({"id": uid, "name": m.get("name") or f"게임 {uid}",
+                      "peakShare": max(share[uid].values()),
+                      "peakShareDate": max(share[uid], key=share[uid].get),
+                      "values": [share[uid].get(d) for d in dates]})
+    games.sort(key=lambda g: g["peakShareDate"])
+    write_json(os.path.join(out_dir, "share_history.json"), {
+        "policy": ("그날 게임 하루 평균 CCU ÷ 그날 플랫폼(RoMonitor) 하루 평균 CCU. "
+                   f"플랫폼 30분 칸이 {SHARE_MIN_SLOTS}개 미만인 날과, 관측된 게임이 "
+                   f"{SHARE_MIN_GAMES}개 미만인 날의 상위10합은 비움."),
+        "basis": "dailyAverage",
+        "dates": dates,
+        "platformAvg": [rnd(plat[d]["avg"]) for d in dates],
+        "platformPeak": [plat[d]["peak"] for d in dates],
+        "gamesObserved": observed,
+        "top10Share": top10,
+        "pickRule": f"하루 평균 점유율 {SHARE_MIN_PCT}%를 {SHARE_MIN_DAYS}일 넘게 넘긴 게임 중 최고 점유율 상위 12개",
+        "games": games,
+    })
+    return len(games)
+
+
 def main():
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
     data_dir = os.path.join(root, "public", "data")
@@ -218,7 +277,9 @@ def main():
         "count": len(index),
         "games": index,
     })
-    print(f"게임 통계: live {n_live} / wayback {n_way} / legacy {n_leg} / 기존 {n_prev} → 파일 {written}개, 색인 {len(index)}개")
+    n_share = build_share_history(acc, plat, meta, out_dir)
+    print(f"게임 통계: live {n_live} / wayback {n_way} / legacy {n_leg} / 기존 {n_prev} → "
+          f"파일 {written}개, 색인 {len(index)}개, 비중 곡선 {n_share}개")
     return 0
 
 

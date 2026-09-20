@@ -8,6 +8,15 @@ const HITS_TABS = {
   record: { label: '역대 기록', sub: '관측된 최고 동시접속 순 · 그날 플랫폼에서 차지한 비중', sort: g => g.allPeak ?? 0 },
 };
 
+// 로블록스 게임 제목은 앞에 업데이트 태그([UPD]·[15 MINS])와 이모지가 붙어 목록에서 읽기 어렵다.
+// 목록·카드에는 태그와 양끝 이모지를 뗀 이름을 쓰고, 원래 제목은 title 툴팁으로 남긴다.
+const NAME_TAG = /^\s*(?:\[[^\]]*\]\s*)+/;
+const EDGE_ICON = /^[\s\p{Extended_Pictographic}‍️⃣]+|[\s\p{Extended_Pictographic}‍️⃣]+$/gu;
+function dispName(n) {
+  const s = String(n || '').replace(NAME_TAG, '').replace(EDGE_ICON, '').trim();
+  return s || String(n || '');
+}
+
 function daysSince(d) { return d ? Math.round((Date.now() - Date.parse(`${d}T00:00:00Z`)) / 86400000) : 9999; }
 const pctText = v => v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
 const pctClass = v => v == null ? '' : v > 0 ? 'up' : v < 0 ? 'down' : '';
@@ -32,6 +41,7 @@ function hitRows() {
 }
 
 async function renderHits() {
+  renderShareHistory();
   await loadHitsIndex();
   const conf = HITS_TABS[hits.tab];
   $('#hitSub').textContent = conf.sub;
@@ -39,7 +49,7 @@ async function renderHits() {
   const rows = hitRows();
   $('#hitTable').innerHTML = rows.map((g, i) => `<tr data-hit-id="${esc(g.id)}" class="${hits.pick === g.id ? 'active' : ''}">
     <td class="rank">${i + 1}</td>
-    <td class="game"><b>${esc(g.name)}</b><small>${esc(g.creator || '제작자 미확인')}${g.genre ? ' · ' + esc(g.genre) : ''}</small></td>
+    <td class="game"><b title="${esc(g.name)}">${esc(dispName(g.name))}</b><small>${esc(g.creator || '제작자 미확인')}${g.genre ? ' · ' + esc(g.genre) : ''}</small></td>
     <td class="num">${fmt(g.d1Avg ?? g.lastAvg)}</td>
     <td class="num">${fmt(g.d7Peak)}</td>
     <td class="num ${pctClass(g.chg7d)}">${pctText(g.chg7d)}</td>
@@ -74,7 +84,8 @@ function renderHitDetail() {
   if (!hits.detail) { box.classList.add('hidden'); return; }
   const d = hits.detail, rec = d.records || {};
   box.classList.remove('hidden');
-  $('#hitDetailName').textContent = d.name;
+  $('#hitDetailName').textContent = dispName(d.name);
+  $('#hitDetailName').title = d.name;
   $('#hitDetailMeta').textContent = `${d.creator || '제작자 미확인'}${d.genre ? ' · ' + d.genre : ''} · 관측 ${rec.daysTracked || 0}일 (${rec.firstSeen || '—'} ~ ${rec.lastSeen || '—'})`;
   const last = (d.days || []).at(-1) || [];
   $('#hitKpiNow').textContent = fmt(last[2]);
@@ -97,6 +108,81 @@ function renderHitDetail() {
   drawChart(canvas, hitSeries(d), { emptyEl: $('#hitEmpty'), colors: ['#f08a4b', '#4c91ff'], step: 86400000 * 2, period: 'daily' });
 }
 
+// ── 히트의 역사 ───────────────────────────────────────────────────────────────
+// 게임 하나가 플랫폼을 얼마나 끌었는지는 절대 CCU 보다 비중이 잘 보여준다.
+// (플랫폼 자체가 1년 새 몇 배로 커져서, 같은 200만이라도 2024년과 2026년의 의미가 다름)
+const SHARE_COLORS = ['#f08a4b', '#4c91ff', '#25c98b', '#b58aff', '#e9ad45', '#f05e7e',
+  '#4dd0e1', '#9ccc65', '#ff8a65', '#7986cb', '#ef5da8', '#00b894'];
+const shareState = { data: null, range: 0, grain: 'weekly', loading: false };
+
+async function loadShare() {
+  if (shareState.data || shareState.loading) return shareState.data;
+  shareState.loading = true;
+  shareState.data = await getJson('public/data/games/share_history.json', null);
+  shareState.loading = false;
+  return shareState.data;
+}
+
+async function renderShareHistory() {
+  const canvas = $('#shareChart');
+  if (!canvas) return;
+  const d = await loadShare();
+  if (!d || !d.dates?.length) {
+    $('#shareEmpty')?.classList.remove('hidden');
+    $('#shareNote').textContent = '비중 곡선이 아직 만들어지지 않았습니다.';
+    return;
+  }
+  const cut = shareState.range ? Date.now() - shareState.range * 86400000 : 0;
+  const keep = d.dates.map((_, i) => i).filter(i => !cut || Date.parse(`${d.dates[i]}T00:00:00Z`) >= cut);
+  // 하루 단위는 814점 × 13선이라 선이 서로 묻힌다. 기본은 주 평균(관측된 날만 평균, 없는 주는 비움).
+  const weekOf = iso => {
+    const t = Date.parse(`${iso}T00:00:00Z`), wd = (new Date(t).getUTCDay() + 6) % 7;
+    return new Date(t - wd * 86400000).toISOString().slice(0, 10);
+  };
+  const mk = (label, vals) => {
+    const have = keep.filter(i => vals[i] != null);
+    if (shareState.grain === 'daily') {
+      return { label, points: have.map(i => ({ date: d.dates[i], value: vals[i], step: 86400000 * 2 })) };
+    }
+    const acc = new Map();
+    for (const i of have) {
+      const k = weekOf(d.dates[i]), a = acc.get(k) || [0, 0];
+      a[0] += vals[i]; a[1] += 1; acc.set(k, a);
+    }
+    return {
+      label,
+      points: [...acc].sort().map(([k, [sum, n]]) => ({ date: k, value: sum / n, days: n, step: 86400000 * 7 })),
+    };
+  };
+  const series = [mk('상위 10개 합', d.top10Share), ...d.games.map(g => mk(dispName(g.name), g.values))];
+  const colors = ['#8892a4', ...d.games.map((_, i) => SHARE_COLORS[i % SHARE_COLORS.length])];
+  const wk = shareState.grain === 'weekly';
+  drawChart(canvas, series, {
+    emptyEl: $('#shareEmpty'), colors, step: 86400000 * (wk ? 7 : 2), period: wk ? 'weekly' : 'daily',
+    fmtY: v => `${v.toFixed(0)}%`, fmtV: v => `${v.toFixed(1)}%`,
+  });
+  $('#shareLegend').innerHTML = series
+    .map((x, i) => `<span class="lg"><i style="background:${colors[i]}"></i>${esc(x.label)}</span>`).join('');
+  $('#shareSub').textContent = `${wk ? '주 평균' : '하루'} 기준 점유율 · 플랫폼 하루 평균 대비 · ${d.dates[keep[0]]} ~ ${d.dates[keep.at(-1)]} (UTC)`;
+  $('#shareNote').textContent = `${d.policy} 선을 그린 기준: ${d.pickRule}.`;
+}
+
+$('#shareGrain')?.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  shareState.grain = b.dataset.shareGrain;
+  $$('#shareGrain button').forEach(x => x.classList.toggle('active', x === b));
+  renderShareHistory();
+});
+$('#shareRange')?.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  shareState.range = Number(b.dataset.shareRange);
+  $$('#shareRange button').forEach(x => x.classList.toggle('active', x === b));
+  renderShareHistory();
+});
+attachHover($('#shareChart'));
+
 window.renderHits = renderHits;
 
 // 개요 화면 상단 하이라이트: 이번 주 가장 많이 오른 게임 3개
@@ -109,8 +195,8 @@ async function renderHitHighlights() {
     .sort((a, b) => b.chg7d - a.chg7d).slice(0, 3);
   const topNow = (hits.index?.games || []).slice(0, 1)[0];
   const cards = [];
-  if (topNow) cards.push(`<article class="hl-card"><span>지금 1위</span><strong>${esc(topNow.name)}</strong><small>하루 평균 ${fmt(topNow.d1Avg ?? topNow.lastAvg)} · 역대 최고 ${fmt(topNow.allPeak)} (${esc(topNow.allPeakDate || '')})</small></article>`);
-  for (const g of rising) cards.push(`<article class="hl-card"><span>이번 주 상승</span><strong>${esc(g.name)}</strong><small class="up">${pctText(g.chg7d)} · 7일 평균 ${fmt(g.d7Avg)}</small></article>`);
+  if (topNow) cards.push(`<article class="hl-card"><span>지금 1위</span><strong title="${esc(topNow.name)}">${esc(dispName(topNow.name))}</strong><small>하루 평균 ${fmt(topNow.d1Avg ?? topNow.lastAvg)} · 역대 최고 ${fmt(topNow.allPeak)} (${esc(topNow.allPeakDate || '')})</small></article>`);
+  for (const g of rising) cards.push(`<article class="hl-card"><span>이번 주 상승</span><strong title="${esc(g.name)}">${esc(dispName(g.name))}</strong><small class="up">${pctText(g.chg7d)} · 7일 평균 ${fmt(g.d7Avg)}</small></article>`);
   box.innerHTML = cards.join('') || '<article class="hl-card"><span>—</span><strong>집계 준비 중</strong><small>게임별 일단위 집계가 만들어지면 표시됩니다.</small></article>';
 }
 window.renderHitHighlights = renderHitHighlights;
@@ -120,5 +206,5 @@ $('#hitSearch')?.addEventListener('input', () => renderHits());
 $('#hitTable')?.addEventListener('click', e => { const tr = e.target.closest('tr[data-hit-id]'); if (tr) openHit(tr.dataset.hitId); });
 $('#hitRange')?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; hits.range = Number(b.dataset.hitRange); $$('#hitRange button').forEach(x => x.classList.toggle('active', x === b)); renderHitDetail(); });
 $('#hitDetailClose')?.addEventListener('click', () => { hits.pick = null; hits.detail = null; $('#hitDetail').classList.add('hidden'); $$('#hitTable tr').forEach(tr => tr.classList.remove('active')); });
-window.addEventListener('resize', () => { if (state.route === 'hits' && hits.detail) renderHitDetail(); });
+window.addEventListener('resize', () => { if (state.route !== 'hits') return; renderShareHistory(); if (hits.detail) renderHitDetail(); });
 attachHover($('#hitChart'));
