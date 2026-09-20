@@ -44,7 +44,9 @@ USER_AGENT = "roblox-usage-observatory/1.0 (+https://github.com/smy7662-dotcom/r
 
 TIER_ORDER = ["top100", "top1000", "all"]
 TIER_SIZE = {"top100": 100, "top1000": 1000, "all": None}
-HISTORY_DAYS = 30
+# 원시 관측은 화면이 매번 통째로 받으므로 짧게 둔다. 장기 값은 build_game_stats.py 가
+# games/{id}.json 에 일단위로 영구 보존한다.
+HISTORY_DAYS = 7
 # 게임 메타 배열 = [이름, 장르, 제작자, 연령등급, 최소연령]. 앞 3칸은 옛 화면 코드가 그대로 읽는다.
 META_LEN = 5
 AGE_LOOKUPS_PER_RUN = 20  # 등급 모르는 게임을 한 회차에 몇 개까지 조회할지
@@ -544,6 +546,14 @@ def ranked_universe_ids(data_dir, history_rows):
     return sorted(ids, key=lambda u: score(u), reverse=True)
 
 
+def in_event_window(now):
+    """토요일 이벤트 시간대(UTC 14:30~17:00) — 주요 게임의 어드민 어뷰즈가 여기 몰려 있어
+    1시간 간격으로는 피크를 놓친다(2026-09-19: 우리 12.1M, 실제 14.3M)."""
+    if now.weekday() != 5:
+        return False
+    return (now.hour == 14 and now.minute >= 30) or (15 <= now.hour < 17)
+
+
 def due_tiers(status_prev, now, force_tier):
     if force_tier:
         return [force_tier]
@@ -563,7 +573,9 @@ def due_tiers(status_prev, now, force_tier):
         return ["all"]
     if not done_since("top1000", block4_start):
         return ["top1000"]
-    if not done_since("top100", hour_start):
+    # 토요일 이벤트 시간대만 15분 블록으로 쪼갠다.
+    top_start = now.replace(minute=now.minute - now.minute % 15, second=0, microsecond=0) if in_event_window(now) else hour_start
+    if not done_since("top100", top_start):
         return ["top100"]
     return []
 
@@ -682,12 +694,13 @@ def main():
     status_prev = read_json(status_path, {})
     now = utc_now()
     status = {"ranAt": iso_z(now), "errors": [], "lastSuccess": dict(status_prev.get("lastSuccess", {})),
-              "policy": "매시간 상위 100, UTC 4시간 블록마다 상위 1,000, UTC 하루 1회 추적 목록 전체. 실제 공개 API 관측값만 저장."}
+              "policy": "매시간 상위 100(토 14:30~17:00 UTC 는 15분), UTC 4시간 블록마다 상위 1,000, UTC 하루 1회 추적 목록 전체. 실제 공개 API 관측값만 저장."}
     saved = False
 
     tiers = [] if args.no_games else due_tiers(status_prev, now, args.force_tier)
     last_platform = status_prev.get("lastPlatformSuccess")
-    platform_fresh = last_platform and now - parse_ts(last_platform) < timedelta(minutes=50)
+    fresh_window = timedelta(minutes=12) if in_event_window(now) else timedelta(minutes=50)
+    platform_fresh = last_platform and now - parse_ts(last_platform) < fresh_window
     if not tiers and platform_fresh and not args.force_tier:
         # 예약이 10분마다 걸려 있으므로, 앞 회차가 이미 처리한 시간대면 커밋·배포 없이 끝낸다.
         log("이번 시간대 수집 이미 완료 — 변경 없음")

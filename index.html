@@ -16,6 +16,7 @@
       <nav class="side-nav" aria-label="분석 메뉴">
         <button class="nav-item active" data-route="overview" type="button"><span>◈</span> 개요</button>
         <button class="nav-item" data-route="games" type="button"><span>▦</span> 게임</button>
+        <button class="nav-item" data-route="hits" type="button"><span>★</span> 히트 랭킹</button>
         <button class="nav-item" data-route="compare" type="button"><span>⌁</span> 게임 비교</button>
         <button class="nav-item" data-route="diurnal" type="button"><span>◔</span> 시간대</button>
         <button class="nav-item" data-route="discovery" type="button"><span>✦</span> 발견 보드</button>
@@ -40,11 +41,25 @@
         </section>
         <div class="notice-row"><span><i class="dot orange"></i> RoMonitor(기준)</span><span><i class="dot blue"></i> RoTrends(robloxccu)</span><span><i class="dot purple"></i> 별도 보고값</span><span><i class="dot amber"></i> 빈 구간은 보간하지 않음</span><span class="notice-right" id="dataStatus">불러오는 중…</span></div>
         <section class="kpi-grid"><article class="kpi-card"><span>선택 구간 평균</span><strong id="summaryAvg">—</strong><small id="summaryAvgSub">RoMonitor 기준</small></article><article class="kpi-card"><span>선택 구간 피크</span><strong id="summaryPeak">—</strong><small id="summaryPeakSub">RoMonitor 기준</small></article><article class="kpi-card"><span>표시 포인트</span><strong id="summaryPoints">—</strong><small id="summaryPointsSub">누락 구간 제외</small></article><article class="kpi-card"><span>마지막 관측</span><strong id="summaryFreshness">—</strong><small id="summaryFreshnessSub">—</small></article></section>
+        <section id="hitHighlights" class="hl-grid"></section>
         <section class="panel chart-panel"><div class="panel-head"><div><div class="section-kicker">플랫폼 시계열</div><h2>플랫폼 전체 동시접속자</h2><p id="chartSubtitle">시간별 · 평균 · 전체 기간</p></div><span class="panel-status" id="chartStatus">—</span></div><div class="chart-wrap"><canvas id="usageChart" aria-label="플랫폼 동시접속자 시계열"></canvas><div id="emptyState" class="empty-state hidden">선택한 범위에 데이터가 없습니다.</div></div><div class="chart-foot"><span>축 라벨은 세계협정시(UTC) 기준이며, 관측이 없는 구간은 선을 잇지 않고 비워 둡니다. RoMonitor 일별값은 30분 칸이 44개 이상 찬 날만 씁니다. 2025-09부터 RoTrends가 RoMonitor·로블록스 공식 이용시간보다 높게 나와서(2026-09 약 1.5배) 수준·전년 비교는 RoMonitor 기준입니다. RoMonitor는 매시간 직접 받고, 2023-04~ 과거는 웨이백 사본입니다.</span><span class="mini-legend"><i class="line orange"></i>RoMonitor <i class="line blue"></i>RoTrends <i class="line purple"></i>보고값</span></div></section>
         <div class="two-column"><section class="panel"><div class="panel-head"><div><div class="section-kicker">상위 게임</div><h2>현재 관측 CCU 상위</h2><p>최근 24시간 공개 게임 API 관측값 · 연령·콘텐츠 제한 게임(예: Brookhaven)은 비로그인 API에 안 잡혀 제외</p></div><button class="text-button" data-route="games">전체 보기 →</button></div><div id="topGames" class="rank-list"></div></section><section class="panel"><div class="panel-head"><div><div class="section-kicker">장르 구성</div><h2>현재 관측 CCU의 장르별 비중</h2><p>최근 24시간 게임별 최신 관측 CCU 합계 기준</p></div><button class="text-button" data-route="genres">분석 →</button></div><div id="genreBars" class="bar-list"></div></section></div>
       </section>
 
       <section class="view hidden" data-view="games"><div class="view-head"><div><div class="section-kicker">게임 탐색</div><h2>게임별 사용량</h2><p>수집된 원시 일별 CCU를 게임 단위로 확인합니다. 행을 누르면 상세 시계열이 열립니다.</p></div><label class="search"><span>⌕</span><input id="gameSearch" placeholder="게임 이름 또는 유니버스 ID 검색" /></label></div><div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>게임</th><th>장르</th><th>평균 CCU</th><th>피크 CCU</th><th>최근 변화</th><th>관측일</th><th>데이터 범위</th></tr></thead><tbody id="gameTable"></tbody></table></div><div class="table-footer" id="gameTableFooter">—</div></div><section id="gameDetail" class="panel game-detail hidden"><div class="detail-head"><button id="closeGameDetail" class="quiet-button">← 목록으로</button><div><div class="section-kicker">게임 상세</div><h2 id="detailName">—</h2><p id="detailMeta">—</p></div><div class="detail-kpis"><span>최근 평균 <b id="detailLatest">—</b></span><span>최근 변화 <b id="detailGrowth">—</b></span><span>관측 피크 <b id="detailPeak">—</b></span><span>관측일 <b id="detailDays">—</b></span></div></div><div class="chart-wrap detail-chart"><canvas id="gameChart" aria-label="게임별 CCU 시계열"></canvas><div id="gameEmpty" class="empty-state hidden">이 게임의 연속 시계열이 없습니다.</div></div><div class="chart-foot"><span id="detailSourceNote">공개 일별 관측값</span><span>공백은 보간하지 않음</span></div></section></section>
+
+      <section class="view hidden" data-view="hits">
+        <div class="view-head"><div><div class="section-kicker">히트 랭킹</div><h2>어떤 게임이 뜨고 있나</h2><p id="hitSub">—</p></div><label class="search"><span>⌕</span><input id="hitSearch" placeholder="게임 이름 또는 유니버스 ID" /></label></div>
+        <div class="segmented" id="hitTabs" style="margin-bottom:14px"><button data-hit-tab="now" class="active">지금 순위</button><button data-hit-tab="rising">급등</button><button data-hit-tab="fresh">신작</button><button data-hit-tab="record">역대 기록</button></div>
+        <div class="notice-row"><span><i class="dot orange"></i> 역대 최고는 우리가 관측한 값</span><span><i class="dot blue"></i> 비중 = 그날 플랫폼 최고 대비</span><span><i class="dot amber"></i> 관측이 드문 날은 피크를 놓칠 수 있음</span></div>
+        <div class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>#</th><th>게임</th><th>하루 평균</th><th>7일 피크</th><th>7일 변화</th><th>역대 최고</th><th>플랫폼 비중</th><th>관측일</th></tr></thead><tbody id="hitTable"></tbody></table></div><div class="table-footer" id="hitFooter">—</div></div>
+        <section id="hitDetail" class="panel game-detail hidden">
+          <div class="detail-head"><button id="hitDetailClose" class="quiet-button">← 목록으로</button><div><div class="section-kicker">게임 상세</div><h2 id="hitDetailName">—</h2><p id="hitDetailMeta">—</p></div><div class="segmented" id="hitRange"><button data-hit-range="30">30일</button><button data-hit-range="90" class="active">90일</button><button data-hit-range="365">1년</button><button data-hit-range="0">전체</button></div></div>
+          <section class="kpi-grid"><article class="kpi-card"><span>최근 하루 평균</span><strong id="hitKpiNow">—</strong><small id="hitKpiNowSub">—</small></article><article class="kpi-card"><span>역대 최고(관측)</span><strong id="hitKpiPeak">—</strong><small id="hitKpiPeakSub">—</small></article><article class="kpi-card"><span>7일 피크</span><strong id="hitKpi7">—</strong><small id="hitKpi7Sub">—</small></article><article class="kpi-card"><span>30일 피크</span><strong id="hitKpi30">—</strong><small id="hitKpi30Sub">—</small></article></section>
+          <div class="chart-wrap detail-chart"><canvas id="hitChart" aria-label="게임 일별 CCU 시계열"></canvas><div id="hitEmpty" class="empty-state hidden">표시할 관측이 없습니다.</div></div>
+          <div class="chart-foot"><span id="hitSourceNote">—</span><span class="mini-legend"><i class="line orange"></i>일 최고 <i class="line blue"></i>일 평균</span></div>
+        </section>
+      </section>
 
       <section class="view hidden" data-view="compare"><div class="view-head"><div><div class="section-kicker">게임 비교</div><h2>게임별 CCU 시계열 비교</h2><p>최대 5개 게임을 선택해 같은 날짜 축에서 비교합니다.</p></div><button id="clearCompare" class="quiet-button">선택 초기화</button></div><div class="panel compare-picker"><div id="compareChips" class="compare-chips"></div><div class="compare-add"><select id="compareGameSelect"><option value="">게임을 선택하세요</option></select><button id="addCompare" class="primary-button">비교에 추가</button></div><p class="helper" id="compareHelper">게임을 추가하면 차트가 표시됩니다.</p></div><section class="panel"><div class="chart-wrap compare-chart"><canvas id="compareChart" aria-label="게임 비교 차트"></canvas><div id="compareEmpty" class="empty-state">비교할 게임을 선택하세요.</div></div></section></section>
 
@@ -62,5 +77,6 @@
     </main>
   </div>
   <script src="public/app.js"></script>
+  <script src="public/hits.js"></script>
 </body>
 </html>

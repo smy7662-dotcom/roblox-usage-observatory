@@ -74,6 +74,17 @@ jobs:
             echo "관측 변화 없음 — 시간대 프로파일 유지"
           fi
 
+      # 게임별 영구 집계(games/{id}.json, index.json)는 하루 한 번만 다시 만든다.
+      # 파일이 2천 개라 매시간 커밋하면 data 브랜치가 빠르게 커진다.
+      - name: 게임 통계 재계산
+        if: github.event_name != 'push'
+        run: |
+          if [ ! -f site-data/public/data/games/index.json ] || [ "$(date -u +%H)" = "00" ]; then
+            python3 scripts/build_game_stats.py site-data
+          else
+            echo "게임 통계는 UTC 00시 회차에만 갱신"
+          fi
+
       - name: 데이터 커밋
         id: commit
         working-directory: site-data
@@ -150,6 +161,11 @@ jobs:
         run: |
           now=$(date -u +%s)
           next=$(( (now / 3600 + 1) * 3600 + 300 ))
+          # 토요일 14:30~17:00 UTC 는 게임 이벤트가 몰려 15분마다 깨운다.
+          dow=$(date -u +%u); hm=$(date -u +%H%M)
+          if [ "$dow" = "6" ] && [ "$hm" -ge 1425 ] && [ "$hm" -lt 1700 ]; then
+            next=$(( (now / 900 + 1) * 900 + 60 ))
+          fi
           echo "다음 회차: $(date -u -d @$next +%FT%TZ) ($(( (next - now) / 60 ))분 뒤)"
           sleep $(( next - now ))
           gh workflow run collect-deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
