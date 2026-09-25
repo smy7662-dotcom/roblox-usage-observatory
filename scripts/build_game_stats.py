@@ -16,12 +16,13 @@
 
 원칙: 관측값만 저장한다. 보간·0 대체·DAU 환산 없음. 출처가 다른 값은 섞지 않고 우선순위로 고른다.
 """
-import json, os, sys, math
+import json, os, sys, math, datetime as dt
 from collections import defaultdict
 
 MIN_PEAK = 5000          # 이 값 미만만 관측된 게임은 개별 파일을 만들지 않는다(파일 수 관리)
 MIN_INDEX_PEAK = 20000   # 목록 화면 색인에 넣는 기준(파일 크기 관리)
 SRC_RANK = {"live": 3, "wayback": 2, "legacy": 1}
+MAX_BUILD_GAP_H = 20     # 플랫폼이 멈춰 있어도 이만큼 지나면 그냥 다시 만든다(하루 한 번은 보장)
 
 
 def read_json(path, default):
@@ -199,10 +200,50 @@ def build_share_history(acc, plat, meta, out_dir):
     return len(games)
 
 
+def stale_reason(data_dir, out_dir):
+    """--if-stale 일 때 "지금 다시 만들어야 하는가"를 판정. 이유 문자열, 아니면 None.
+
+    UTC 00시에만 돌리던 걸 이걸로 바꿈. RoMonitor 가 로컬 PC 예약작업으로 올라와서
+    00시에 PC 가 꺼져 있으면 최근 날짜가 통째로 잘렸다(2026-09-25: 곡선이 09-22 에서 멈춤).
+    그래서 '플랫폼이 새 날짜를 채웠나'와 '마지막 빌드가 언제였나' 두 가지로 판정한다.
+    """
+    idx = read_json(os.path.join(out_dir, "index.json"), None)
+    if not idx:
+        return "색인이 없음"
+    built = idx.get("builtAt")
+    if not built:
+        return "직전 빌드 시각이 기록돼 있지 않음"
+    try:
+        age = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(built.replace("Z", "+00:00")))
+    except ValueError:
+        return f"직전 빌드 시각을 못 읽음({built})"
+    if age >= dt.timedelta(hours=MAX_BUILD_GAP_H):
+        return f"마지막 빌드 후 {age.total_seconds() / 3600:.1f}시간 지남"
+    plat = platform_by_day(data_dir)
+    full = sorted(d for d, v in plat.items() if v["n"] >= SHARE_MIN_SLOTS)
+    if not full:
+        return None
+    dates = (read_json(os.path.join(out_dir, "share_history.json"), None) or {}).get("dates") or []
+    if not dates:
+        return "점유율 곡선이 없음"
+    last = dates[-1]
+    if last < full[-1]:
+        return f"플랫폼이 {full[-1]} 까지 찼는데 점유율 곡선은 {last} 에서 멈춰 있음"
+    return None
+
+
 def main():
-    root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
+    args = [x for x in sys.argv[1:] if not x.startswith("--")]
+    flags = {x for x in sys.argv[1:] if x.startswith("--")}
+    root = os.path.abspath(args[0] if args else ".")
     data_dir = os.path.join(root, "public", "data")
     out_dir = os.path.join(data_dir, "games")
+    if "--if-stale" in flags:
+        why = stale_reason(data_dir, out_dir)
+        if not why:
+            print("게임 통계: 최신이라 건너뜀")
+            return 0
+        print(f"게임 통계 재계산 이유: {why}")
     acc, meta = defaultdict(dict), {}
     n_live = load_live(data_dir, acc, meta)
     n_way = load_wayback(data_dir, acc, meta)
@@ -211,7 +252,7 @@ def main():
     n_prev = 0
     if os.path.isdir(out_dir):
         for fn in os.listdir(out_dir):
-            if fn == "index.json" or not fn.endswith(".json"):
+            if fn in ("index.json", "share_history.json") or not fn.endswith(".json"):
                 continue
             uid = fn[:-5]
             prev = read_json(os.path.join(out_dir, fn), {})
@@ -272,6 +313,7 @@ def main():
         r["rank"] = i
     write_json(os.path.join(out_dir, "index.json"), {
         "updatedAt": max((r["last"] for r in index), default=None),
+        "builtAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "policy": "UTC 날짜 기준 일단위 집계. 순위는 우리가 추적하는 게임 안에서의 순위임.",
         "minPeakKept": MIN_PEAK, "minPeakIndexed": MIN_INDEX_PEAK,
         "count": len(index),
